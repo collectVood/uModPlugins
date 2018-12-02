@@ -17,7 +17,6 @@ namespace Oxide.Plugins
         #region Variables
         
         private static QuickSmelt _instance;
-        private static MethodInfo _consumeFuelMethod;
 
         private const string PermAllow = "quicksmelt.allow";
 
@@ -91,41 +90,40 @@ namespace Oxide.Plugins
         {
             _instance = this;
             permission.RegisterPermission(PermAllow, this);
-            _consumeFuelMethod = typeof(BaseOven).GetMethod("ConsumeFuel", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
         }
 
         private void Unload()
         {
-            //Make sure to always return things to their vanilla state
-            foreach(var oven in BaseNetworkable.serverEntities.OfType<BaseOven>())
+            // Make sure to always return things to their vanilla state
+            foreach(var oven in UnityEngine.Object.FindObjectsOfType<BaseOven>())
             {
                 oven.allowByproductCreation = true;
 
-                var data = oven.GetComponent<FurnaceData>();
-
                 if (oven.IsOn())
                 {
-                    //Stop the modded smelting, resume the vanilla smelting
+                    // Stop the modded smelting, resume the vanilla smelting
                     StopCooking(oven);
                     oven.StartCooking();
                 }
 
-                //Get rid of those monobehaviors
-                UnityEngine.Object.Destroy(data);
+                // Get rid of those monobehaviors
+                UnityEngine.Object.Destroy(oven.GetComponent<FurnaceData>());
             }
         }
 
         private void OnServerInitialized()
         {
-            foreach(var oven in BaseNetworkable.serverEntities.OfType<BaseOven>().Where(x=>x.IsOn()))
+            foreach (var oven in UnityEngine.Object.FindObjectsOfType<BaseOven>())
             {
+                if (!oven.IsOn())
+                    continue;
+                
                 NextFrame(() =>
                 {
                     if (oven == null || oven.IsDestroyed)
-                    {
                         return;
-                    }
-                    //So invokes are actually removed at the end of a frame, meaning you can get multiple invokes at once after reloading plugin
+                    
+                    // Invokes are actually removed at the end of a frame, meaning you can get multiple invokes at once after reloading plugin
                     StopCooking(oven);
                     StartCooking(oven);
                 });
@@ -134,38 +132,65 @@ namespace Oxide.Plugins
 
         private object OnOvenToggle(BaseOven oven, BasePlayer player)
         {
-            if (oven is BaseFuelLightSource || (oven.needsBuildingPrivilegeToUse && !player.CanBuild()))
-            {
+            if (oven is BaseFuelLightSource || oven.needsBuildingPrivilegeToUse && !player.CanBuild())
                 return null;
-            }
-            if (!oven.HasFlag(BaseEntity.Flags.On))
-            {
-                StartCooking(oven);
-            }
-            else
-            {
+
+            if (oven.HasFlag(BaseEntity.Flags.On))
                 StopCooking(oven);
-            }
+            else
+                StartCooking(oven);
             return false;
+        }
+        
+        private void OnConsumeFuel(BaseOven oven, Item fuel, ItemModBurnable burnable)
+        {
+            var slot = oven.GetSlot(BaseEntity.Slot.FireMod);
+            if (slot != null)
+            {
+                //Usually 0.5f for cook tick, fuel is only consumed twice per second
+                slot.SendMessage("Cook", 2f * _config.SmeltSpeed * _config.WaterPurifierMultiplier, SendMessageOptions.DontRequireReceiver);
+            }
+        
+            if (oven == null || oven is BaseFuelLightSource)
+                return;
+        
+            // Check if permissions are enabled and player has permission
+            if (_config.UsePermissions && !permission.UserHasPermission(oven.OwnerID.ToString(), PermAllow)) return;
+        
+            oven.transform.GetOrAddComponent<FurnaceData>();
+        
+            // Charcoal modifier
+            if (burnable.byproductItem != null)
+            {
+                oven.allowByproductCreation = false;
+                var charcoalAmount = 0;
+                var modifiedRate = _config.CharcoalRate * _config.WoodRate;
+                charcoalAmount += (int)(_config.CharcoalRate * _config.WoodRate);
+                modifiedRate -= charcoalAmount;
+        
+                if (modifiedRate > 0 && modifiedRate <= 1f)
+                {
+                    if (Random.Range(0f, 1f) < modifiedRate)
+                    {
+                        charcoalAmount += 1;
+                    }
+                }
+        
+                if (charcoalAmount > 0)
+                    TryAddItem(oven.inventory, burnable.byproductItem, Mathf.Min(charcoalAmount, fuel.amount));
+            }
+        
+            // Modify the amount of fuel to use
+            fuel.UseItem(_config.WoodRate - 1);
         }
         
         #endregion
         
         #region Helpers
-        
-        public Item FindBurnable(BaseOven oven)
-        {
-            return oven.inventory.itemList.FirstOrDefault(x => //TIL you can declare Linq over multiple lines
-            {
-                var comp = x.info.GetComponent<ItemModBurnable>();
-                if (comp != null && (oven.fuelType == null || x.info == oven.fuelType))
-                {
-                    return true;
-                }
-                return false;
-            });
-        }
-        
+
+        private Item FindBurnable(BaseOven oven) => oven.inventory.itemList.FirstOrDefault(x =>
+            x.info.GetComponent<ItemModBurnable>() != null && (oven.fuelType == null || x.info == oven.fuelType));
+
         //Overwriting Oven.StartCooking
         private void StartCooking(BaseOven oven)
         {
@@ -192,59 +217,6 @@ namespace Oxide.Plugins
             oven.StopCooking();
         }
         
-        private void OnConsumeFuel(BaseOven oven, Item fuel, ItemModBurnable burnable)
-        {
-            var slot = oven.GetSlot(BaseEntity.Slot.FireMod);
-            if (slot != null)
-            {
-                //Usually 0.5f for cook tick, fuel is only consumed twice per second
-                slot.SendMessage("Cook", 2f * _config.SmeltSpeed * _config.WaterPurifierMultiplier, SendMessageOptions.DontRequireReceiver);
-            }
-        
-            if (oven == null || oven is BaseFuelLightSource)
-            {
-                return;
-            }
-        
-            // Check if permissions are enabled and player has permission
-            if (_config.UsePermissions && !permission.UserHasPermission(oven.OwnerID.ToString(), PermAllow)) return;
-        
-            var data = oven.transform.GetOrAddComponent<FurnaceData>();
-        
-            #region Charcoal Modifier
-        
-            if (burnable.byproductItem != null)
-            {
-                oven.allowByproductCreation = false;
-        
-                var charcoalAmount = 0;
-        
-                var modifiedRate = _config.CharcoalRate * _config.WoodRate;
-                        
-                charcoalAmount += (int)(_config.CharcoalRate * _config.WoodRate);
-        
-                modifiedRate -= charcoalAmount;
-        
-                if (modifiedRate > 0 && modifiedRate <= 1f)
-                {
-                    if (Random.Range(0f, 1f) < modifiedRate)
-                    {
-                        charcoalAmount += 1;
-                    }
-                }
-        
-                if (charcoalAmount > 0)
-                {
-                    TryAddItem(oven.inventory, burnable.byproductItem, Mathf.Min(charcoalAmount, fuel.amount));
-                }
-            }
-        
-            #endregion
-        
-            // Modify the amount of fuel to use
-            fuel.UseItem(_config.WoodRate - 1);
-        }
-        
         public static int TakeFromInventorySlot(ItemContainer container, int itemId, int amount, Item item)
         {
             if (item.info.itemid != itemId) return 0;
@@ -266,13 +238,11 @@ namespace Oxide.Plugins
             foreach (var item in container.itemList)
             {
                 if (item.info != definition)
-                {
                     continue;
-                }
+                
                 if (amountLeft <= 0)
-                {
                     return;
-                }
+                
                 if (item.amount < item.MaxStackable())
                 {
                     var amountToAdd = Mathf.Min(amountLeft, item.MaxStackable() - item.amount);
@@ -281,94 +251,83 @@ namespace Oxide.Plugins
                     amountLeft -= amountToAdd;
                 }
             }
+            
             if (amountLeft <= 0)
-            {
                 return;
-            }
+            
             var smeltedItem = ItemManager.Create(definition, amountLeft);
             if (!smeltedItem.MoveToContainer(container))
             {
                 smeltedItem.Drop(container.dropPosition, container.dropVelocity);
                 var oven = container.entityOwner as BaseOven;
                 if (oven != null)
-                {
                     _instance.StopCooking(oven);
-                    //oven.OvenFull();
-                }
-            }
-        }
-        
-        private void ConsumeFuel(BaseOven oven, Item fuel, ItemModBurnable burnable)
-        {
-            Interface.CallHook("OnConsumeFuel", oven, fuel, burnable);
-            if (oven.allowByproductCreation && burnable.byproductItem != null && Random.Range(0.0f, 1f) > (double) burnable.byproductChance)
-            {
-                var obj = ItemManager.Create(burnable.byproductItem, burnable.byproductAmount);
-                if (!obj.MoveToContainer(oven.inventory))
-                {
-                    oven.OvenFull();
-                    obj.Drop(oven.inventory.dropPosition, oven.inventory.dropVelocity);
-                }
-            }
-            if (fuel.amount <= 1)
-            {
-                fuel.Remove();
-            }
-            else
-            {
-                --fuel.amount;
-                fuel.fuel = burnable.fuelAmount;
-                fuel.MarkDirty();
             }
         }
         
         #endregion
 		
-        
-
         public class FurnaceData : MonoBehaviour
         {
             private BaseOven _oven;
-            public BaseOven Furnace { get { if (_oven == null) { _oven = GetComponent<BaseOven>(); } return _oven; } } //One line bullshit right here
+            public BaseOven Furnace { get { if (_oven == null) { _oven = GetComponent<BaseOven>(); } return _oven; } }
 
             public int SmeltTicks;
             public Dictionary<string, float> ItemLeftovers = new Dictionary<string, float>();
 
             public void CookOverride()
             {
-                SmeltTicks++;
-                if (SmeltTicks % 2 == 0)
-                {
+                if (++SmeltTicks % 2 == 0)
                     TrySmeltItems();
-                }
+                
                 var burnable = _instance.FindBurnable(Furnace);
                 if (burnable == null)
                 {
                     _instance.StopCooking(Furnace);
                     return;
                 }
+                
                 var component = burnable.info.GetComponent<ItemModBurnable>();
                 burnable.fuel -= 0.5f * Furnace.cookingTemperature / 200f;
+                
                 if (!burnable.HasFlag(global::Item.Flag.OnFire))
                 {
                     burnable.SetFlag(global::Item.Flag.OnFire, true);
                     burnable.MarkDirty();
                 }
+                
                 if (burnable.fuel <= 0f)
+                    ConsumeFuel(burnable, component);
+            }
+        
+            private void ConsumeFuel(Item fuel, ItemModBurnable burnable)
+            {
+                Interface.CallHook("OnConsumeFuel", Furnace, fuel, burnable);
+                if (Furnace.allowByproductCreation && burnable.byproductItem != null && Random.Range(0.0f, 1f) > (double) burnable.byproductChance)
                 {
-                    var array = ArrayPool.Get(2);
-                    array[0] = burnable;
-                    array[1] = component;
-                    _consumeFuelMethod.Invoke(Furnace, array);
-                    ArrayPool.Free(array);
+                    var obj = ItemManager.Create(burnable.byproductItem, burnable.byproductAmount);
+                    if (!obj.MoveToContainer(Furnace.inventory))
+                    {
+                        Furnace.OvenFull();
+                        obj.Drop(Furnace.inventory.dropPosition, Furnace.inventory.dropVelocity);
+                    }
+                }
+                
+                if (fuel.amount <= 1)
+                    fuel.Remove();
+                else
+                {
+                    --fuel.amount;
+                    fuel.fuel = burnable.fuelAmount;
+                    fuel.MarkDirty();
                 }
             }
 
             private void TrySmeltItems()
             {
-                #region Smelt Modifier
-
-                int smeltLoops = Mathf.Max(1, _config.GetSmeltRate(Furnace));
+                var smeltLoops = Mathf.Max(1,
+                    //_config.GetSmeltRate(Furnace) - I must change this. TODO
+                    0);
 
                 if (smeltLoops > 0)
                 {
@@ -379,48 +338,29 @@ namespace Oxide.Plugins
                         // Check for and ignore invalid items
                         var slotItem = Furnace.inventory.itemList[i];
                         if (slotItem == null || !slotItem.IsValid())
-                        {
                             continue;
-                        }
 
                         // Check for and ignore non-cookables
                         var cookable = slotItem.info.GetComponent<ItemModCookable>();
                         if (cookable == null)
-                        {
                             continue;
-                        }
 
-                        //Make sure oil refinery only cooks oil, fireplace cooks food, furnace cooks ore
+                        // Make sure oil refinery only cooks oil, fireplace cooks food, furnace cooks ore
                         if (cookable.lowTemp > Furnace.cookingTemperature || cookable.highTemp < Furnace.cookingTemperature)
                         {
                             if (_config.CanCookFoodInFurnace)
                             {
-                                //Allow food to be cooked in furnaces
                                 if (!_rawMeatNames.Contains(slotItem.info.shortname))
-                                {
                                     continue;
-                                }
                             }
                             else
-                            {
                                 continue;
-                            }
                         }
 
-                        //_plugin.Puts($"{SmeltTicks} {(int)(cookable.cookTime)}");
-
-                        //We do probability over time to see if we should cook instead of keeping track of item smelt time
-                        //Will change this back to linear smelting once we expose ItemModCookable.OnCycle()
-                        if ((int)cookable.cookTime != 0 && (SmeltTicks / 2) % (int)(cookable.cookTime) != 0)
-                        {
+                        // We do probability over time to see if we should cook instead of keeping track of item smelt time
+                        // Will change this back to linear smelting once we expose ItemModCookable.OnCycle()
+                        if ((int) cookable.cookTime != 0 && SmeltTicks / 2 % (int)(cookable.cookTime) != 0 || slotItem.info.shortname.EndsWith(".cooked"))
                             continue;
-                        }
-
-                        // Skip already cooked food items
-                        if (slotItem.info.shortname.EndsWith(".cooked"))
-                        {
-                            continue;
-                        }
 
                         // Set consumption to however many we can pull from this actual stack
                         var consumptionAmount = TakeFromInventorySlot(Furnace.inventory, slotItem.info.itemid, _config.SmeltSpeed, slotItem);
@@ -431,15 +371,13 @@ namespace Oxide.Plugins
                             continue;
                         }
 
-                        //Will be used for efficency
+                        // Will be used for efficency
                         var extraLoops = 1;
 
                         // Create the item(s) that are now cooked
                         TryAddItem(Furnace.inventory, cookable.becomeOnCooked, (cookable.amountOfBecome * consumptionAmount * extraLoops));
                     }
                 }
-
-                #endregion
 
                 ItemManager.DoRemoves();
             }
@@ -451,12 +389,11 @@ namespace Oxide.Plugins
         }
         
         [ConsoleCommand("quicksmelt")]
-        private void QuickSmeltInfoCommand(ConsoleSystem.Arg args)
+        private void QuickSmeltInfoCommand(ConsoleSystem.Arg arg)
         {
-            if (!args.IsAdmin)
-            {
+            if (!arg.IsAdmin)
                 return;
-            }
+            
             var table = new TextTable();
             table.AddColumns("Description", "Setting", "Console Command");
             table.AddRow("", "");
@@ -464,7 +401,7 @@ namespace Oxide.Plugins
             table.AddRow("Charcoal Rate", $"{_config.CharcoalRate:0.0}x", "quicksmelt.charcoal");
             table.AddRow("Wood Rate", $"{_config.WoodRate}x", "quicksmelt.wood");
             table.AddRow("Will Food Cook In Furnace", $"{_config.CanCookFoodInFurnace}", "quicksmelt.food");
-            args.ReplyWith(table.ToString());
+            arg.ReplyWith(table.ToString());
         }
     }
 }
