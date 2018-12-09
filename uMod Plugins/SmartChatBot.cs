@@ -34,8 +34,8 @@ namespace Oxide.Plugins
         #region Configuration
 
         private Configuration _config = new Configuration();
-        
-        public class Configuration
+
+        private class Configuration
         {
             [JsonProperty(PropertyName = "Chat Prefix")]
             public string Prefix = "<color=#787FFF>Bot </color>";
@@ -124,7 +124,7 @@ namespace Oxide.Plugins
 
         protected override void SaveConfig() => Config.WriteObject(_config);
 
-        public class AutoMessageGroup
+        private class AutoMessageGroup
         {
             [JsonProperty(PropertyName = "Permission")]
             public string Permission = "smartchatbot.messages";
@@ -139,7 +139,7 @@ namespace Oxide.Plugins
             public List<AutoMessage> AutoMessages = new List<AutoMessage> { new AutoMessage() };
         }
 
-        public class AutoMessage
+        private class AutoMessage
         {
             [JsonProperty(PropertyName = "Is Enabled")]
             public bool Enabled = true;
@@ -148,7 +148,7 @@ namespace Oxide.Plugins
             public string Message = "Do not mind, I am just a stupid bot.";
         }
 
-        public class AutoResponseGroup
+        private class AutoResponseGroup
         {
             [JsonProperty(PropertyName = "Permission")]
             public string Permission = "smartchatbot.response";
@@ -157,7 +157,7 @@ namespace Oxide.Plugins
             public List<AutoResponse> AutoResponses = new List<AutoResponse> { new AutoResponse() };
         }
 
-        public class AutoResponse
+        private class AutoResponse
         {
             [JsonProperty(PropertyName = "Is Enabled")]
             public bool Enabled = true;
@@ -177,7 +177,7 @@ namespace Oxide.Plugins
             public bool IsValid() => Triggers.Count > 0 && Answers.Count > 0;
         }
 
-        public class AutoResponseTrigger
+        private class AutoResponseTrigger
         {
             [JsonProperty(PropertyName = "Percentage Of Contained Words")]
             public float ContainedWordsPercentage = 0.75f;
@@ -369,7 +369,7 @@ namespace Oxide.Plugins
         
         private bool CommandConsoleDebugInfo(ConsoleSystem.Arg arg)
         {
-            if (!arg.IsRcon && !arg.IsConnectionAdmin)
+            if (!arg.IsAdmin)
                 return false;
 
             arg.ReplyWith($"Plugin: {Name}\n" +

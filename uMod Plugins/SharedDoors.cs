@@ -12,6 +12,8 @@ namespace Oxide.Plugins
     [Description("Making sharing doors easier.")]
     public class SharedDoors : CovalencePlugin
     {
+        #region Variables
+        
         [PluginReference]
         private Plugin Clans;
 
@@ -22,6 +24,10 @@ namespace Oxide.Plugins
         private const string RUST_CLANS_NOT_FOUND = "Rust Clans has not been found.";
         private const string MASTER_PERM = "shareddoors.master";
         private MasterKeyHolders holders;
+        
+        #endregion
+        
+        #region Hooks
 
         private void OnServerInitialized()
         {
@@ -88,6 +94,10 @@ namespace Oxide.Plugins
             || new DoorAuthorizer(door, player).CanOpen();
             return canUse;
         }
+        
+        #endregion
+        
+        #region Commands
 
         [Command("sd")]
         private void SharedDoorsCommand(IPlayer player, string command, string[] args)
@@ -132,6 +142,10 @@ namespace Oxide.Plugins
                 PlayerResponder.NotifyUser(player, "Master Mode Toggle: /sd masterMode");
             }
         }
+        
+        #endregion
+        
+        #region Helpers
 
         public static SharedDoors getInstance()
         {
@@ -410,5 +424,7 @@ namespace Oxide.Plugins
                 IsMasterKeyHolder = !IsMasterKeyHolder;
             }
         }
+        
+        #endregion
     }
 }

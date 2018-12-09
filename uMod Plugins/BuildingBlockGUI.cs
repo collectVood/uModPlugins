@@ -27,7 +27,6 @@ namespace Oxide.Plugins
 
         protected override void LoadDefaultConfig()
         {
-            PrintWarning("No configuration file found, generating...");
             Config.Clear();
             LoadVariables();
         }
@@ -64,7 +63,7 @@ namespace Oxide.Plugins
 
         #endregion
 
-        #region Messages
+        #region Hooks
 
         protected override void LoadDefaultMessages()
         {
@@ -78,11 +77,6 @@ namespace Oxide.Plugins
                 {"text", "СТРОИТЕЛЬСТВО ЗАПРЕЩЕНО" }
             }, this, "ru");
         }
-        private string Msg(string key, BasePlayer player = null) => lang.GetMessage(key, this, player?.UserIDString);
-        
-        #endregion
-
-        #region Hooks
 
         private void Init()
         {
@@ -129,7 +123,7 @@ namespace Oxide.Plugins
             if (_configUseGameTips)
             {
                 player.SendConsoleCommand("gametip.hidegametip");
-                player.SendConsoleCommand("gametip.showgametip", Msg("text", player));
+                player.SendConsoleCommand("gametip.showgametip", GetMsg("text", player.UserIDString));
                 _activeUI.Add(player.userID);
                 return;
             }
@@ -166,7 +160,7 @@ namespace Oxide.Plugins
                 {
                     Parent = panel,
                     Components = {
-                        new CuiTextComponent { Text = Msg("text",player), FontSize = 15, Color = _configUITextColor, Align = TextAnchor.MiddleCenter },
+                        new CuiTextComponent { Text = GetMsg("text",player.UserIDString), FontSize = 15, Color = _configUITextColor, Align = TextAnchor.MiddleCenter },
                         new CuiRectTransformComponent { AnchorMin = "0.0 0.0", AnchorMax = "1.0 1.0" }
                     }
                 };
@@ -185,14 +179,13 @@ namespace Oxide.Plugins
             foreach (var player in BasePlayer.activePlayerList)
             {
                 if (player.IsBuildingBlocked())
-                {
                     CreateUI(player);
-                } else
-                {
+                else
                     DestroyUI(player);
-                }
             }
         }
+        
+        private string GetMsg(string key, string userId = null) => lang.GetMessage(key, this, userId);
 
         #endregion
     }

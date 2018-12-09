@@ -485,29 +485,6 @@ namespace Oxide.Plugins
         
         #endregion
 
-        #region Helpers
-
-        private void LoadSkinsList(ItemDefinition def)
-        {
-            if (SkinsList.ContainsKey(def.shortname))
-                SkinsList.Remove(def.shortname);
-            var ids = new List<ulong>() { 0 };
-            if (_config.DefaultSkins)
-            {
-                var skins = ItemSkinDirectory.ForItem(def);
-                var uniqSkins = new List<string>();
-                foreach (var skin in skins)
-                {
-                    if (!skin.isSkin) continue;
-                    if (uniqSkins.Contains(skin.name)) continue;
-                    uniqSkins.Add(skin.name);
-                    ids.Add((ulong)skin.id);
-                }
-            }
-            if(_config.CustomSkins.ContainsKey(def.shortname))
-            {
-                foreach (ulong wid in _config
-
         #region Classes
         
         public class SkinContainer
