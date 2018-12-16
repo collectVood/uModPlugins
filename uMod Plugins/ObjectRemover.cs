@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Globalization;
 using Newtonsoft.Json;
 using Oxide.Core;
 using Oxide.Game.Rust.Libraries;
@@ -10,7 +9,7 @@ using Time = UnityEngine.Time;
 
 namespace Oxide.Plugins
 {
-    [Info("ObjectRemover", "Iv Misticos", "3.0.1")]
+    [Info("Object Remover", "Iv Misticos", "3.0.2")]
     [Description("Removes furnaces, lanterns, campfires, buildings etc. on command")]
     class ObjectRemover : RustPlugin
     {
@@ -47,7 +46,7 @@ namespace Oxide.Plugins
             {
                 Config.WriteObject(_config, false, $"{Interface.Oxide.ConfigDirectory}/{Name}.jsonError");
                 PrintError("The configuration file contains an error and has been replaced with a default config.\n" +
-                          "The error configuration file was saved in the .jsonError extension");
+                           "The error configuration file was saved in the .jsonError extension");
                 LoadDefaultConfig();
             }
 
@@ -70,10 +69,12 @@ namespace Oxide.Plugins
                 { "Count", "We found {count} entities in {time}s." },
                 { "Removed", "You have removed {count} entities in {time}s." },
                 { "Help", "Object command usage:\n" +
-                          "/object (entity) (action) [radius]\n" +
-                          "entity: part of shortname or 'all'\n" +
-                          "action: count or remove\n" +
-                          "radius: optional, radius" },
+                          "/object (entity) [parameters]\n" +
+                          "Parameters:\n" +
+                          "action count/remove - Count or remove entities\n" +
+                          "radius NUM - Radius\n" +
+                          "inside true/false - Entities inside the cupboard\n" +
+                          "outside true/false - Entities outside the cupboard" },
                 { "No Console", "Please log in as a player to use that command" }
             }, this);
         }
@@ -104,27 +105,21 @@ namespace Oxide.Plugins
                 return;
             }
 
-            if (args.Length < 2)
+            if (args.Length < 1)
             {
                 player.ChatMessage(_config.Prefix + GetMsg("Help", id));
                 return;
             }
 
+            var options = new RemoveOptions();
+            options.Parse(args);
+            
             var entity = args[0];
-            var isCount = args[1].Equals("count");
-            float radius;
-            if (args.Length == 2 || !float.TryParse(args[2], out radius))
-                radius = 10f;
-
             var before = Time.realtimeSinceStartup;
-            var objects = FindObjects(player.transform.position, radius, entity);
+            var objects = FindObjects(player.transform.position, entity, options);
             var count = objects.Count;
 
-            if (isCount)
-            {
-                player.ChatMessage(_config.Prefix + GetMsg("Count", id).Replace("{count}", count.ToString()).Replace("{time}", (Time.realtimeSinceStartup - before).ToString("0.###")));
-            }
-            else
+            if (!options.Count)
             {
                 for (var i = 0; i < count; i++)
                 {
@@ -133,9 +128,11 @@ namespace Oxide.Plugins
                         continue;
                     ent.Kill();
                 }
-                
-                player.ChatMessage(_config.Prefix + GetMsg("Removed").Replace("{count}", count.ToString()).Replace("{time}", (Time.realtimeSinceStartup - before).ToString("0.###")));
             }
+
+            player.ChatMessage(_config.Prefix + GetMsg(options.Count ? "Count" : "Removed", id)
+                                   .Replace("{count}", count.ToString()).Replace("{time}",
+                                       (Time.realtimeSinceStartup - before).ToString("0.###")));
         }
         
         private bool CommandConsoleObject(ConsoleSystem.Arg arg)
@@ -152,25 +149,80 @@ namespace Oxide.Plugins
         }
 
         #endregion
+        
+        #region Remove Options
 
-        #region Plugin Helpers
+        private class RemoveOptions
+        {
+            public float Radius = 10f;
+            public bool Count = true;
+            public bool OutsideCupboard = true;
+            public bool InsideCupboard = true;
 
-        private List<BaseEntity> FindObjects(Vector3 startPos, float radius, string entity)
+            public void Parse(string[] args)
+            {
+                for (var i = 1; i + 1 < args.Length; i += 2)
+                {
+                    switch (args[i])
+                    {
+                        case "a":
+                        case "action":
+                        {
+                            Count = args[i + 1] != "remove";
+
+                            break;
+                        }
+                        
+                        case "r":
+                        case "radius":
+                        {
+                            if (!float.TryParse(args[i + 1], out Radius))
+                                Radius = 10f;
+
+                            break;
+                        }
+
+                        case "oc":
+                        case "outside":
+                        {
+                            if (!bool.TryParse(args[i + 1], out OutsideCupboard))
+                                OutsideCupboard = true;
+                            
+                            break;
+                        }
+
+                        case "ic":
+                        case "inside":
+                        {
+                            if (!bool.TryParse(args[i + 1], out InsideCupboard))
+                                InsideCupboard = true;
+
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        
+        #endregion
+
+        #region Helpers
+
+        private List<BaseEntity> FindObjects(Vector3 startPos, string entity, RemoveOptions options)
         {
             var entities = new List<BaseEntity>();
             var isAll = entity.Equals("all");
-            if (radius > 0)
+            if (options.Radius > 0)
             {
-                Vis.Entities(startPos, radius, entities);
-                if (isAll)
-                    return entities;
-
-                var entitiesCount = entities.Count;
+                var entitiesList = new List<BaseEntity>();
+                Vis.Entities(startPos, options.Radius, entitiesList);
+                var entitiesCount = entitiesList.Count;
                 for (var i = entitiesCount - 1; i >= 0; i--)
                 {
-                    var ent = entities[i];
-                    if (ent.ShortPrefabName.IndexOf(entity, StringComparison.CurrentCultureIgnoreCase) == -1)
-                        entities.RemoveAt(i);
+                    var ent = entitiesList[i];
+
+                    if (IsNeededObject(ent, entity, isAll, options))
+                        entities.Add(ent);
                 }
             }
             else
@@ -180,12 +232,19 @@ namespace Oxide.Plugins
                 for (var i = 0; i < entsCount; i++)
                 {
                     var ent = ents[i];
-                    if (isAll || ent.ShortPrefabName.IndexOf(entity, StringComparison.CurrentCultureIgnoreCase) != -1)
+                    if (IsNeededObject(ent, entity, isAll, options))
                         entities.Add(ent);
                 }
             }
 
             return entities;
+        }
+
+        private bool IsNeededObject(BaseEntity entity, string shortname, bool isAll, RemoveOptions options)
+        {
+            return (isAll || entity.ShortPrefabName.IndexOf(shortname, StringComparison.CurrentCultureIgnoreCase) != -1) &&
+                   (options.InsideCupboard && entity.GetBuildingPrivilege() != null ||
+                    options.OutsideCupboard && entity.GetBuildingPrivilege() == null);
         }
 
         private string GetMsg(string key, string userId = null) => lang.GetMessage(key, this, userId);
