@@ -1,6 +1,6 @@
 namespace Oxide.Plugins
 {
-    [Info("Building Actions", "Iv Misticos", "1.0.0")]
+    [Info("Building Actions", "Iv Misticos", "1.0.1")]
     [Description("Rotate and demolish buildings when you want!")]
     class BuildingActions : RustPlugin
     {
@@ -18,6 +18,8 @@ namespace Oxide.Plugins
             if (block == null)
                 return;
             
+            block.CancelInvoke(block.StopBeingDemolishable);
+            block.CancelInvoke(block.StopBeingRotatable);
             block.SetFlag(BaseEntity.Flags.Reserved1, true);
             block.SetFlag(BaseEntity.Flags.Reserved2, true);
         }
