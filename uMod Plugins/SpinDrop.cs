@@ -5,8 +5,8 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Spin Drop", "Iv Misticos", "2.0.0")]
-    [Description("Spin around dropped weapons and tools above the ground")]
+    [Info("Spin Drop", "Iv Misticos", "1.0.0")]
+    [Description("Spin around dropped items")]
     class SpinDrop : RustPlugin
     {
         #region Configuration
@@ -48,8 +48,7 @@ namespace Oxide.Plugins
 
         private void OnItemDropped(Item item, BaseEntity entity)
         {
-            var gameObject = item.GetWorldEntity().gameObject;
-            gameObject.AddComponent<SpinDropControl>();
+            item.GetWorldEntity().gameObject.AddComponent<SpinDropControl>();
         }
 
         #endregion
@@ -65,7 +64,7 @@ namespace Oxide.Plugins
                 rigidbody.isKinematic = true;
             }
 
-            private void Update()
+            private void FixedUpdate()
             {
                 gameObject.transform.Rotate(Vector3.down * Time.deltaTime * _config.SpeedModifier);
             }
