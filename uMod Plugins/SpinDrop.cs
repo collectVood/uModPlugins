@@ -1,4 +1,7 @@
-﻿using UnityEngine;
+﻿using System;
+using Newtonsoft.Json;
+using Oxide.Core;
+using UnityEngine;
 
 namespace Oxide.Plugins
 {
@@ -6,30 +9,68 @@ namespace Oxide.Plugins
     [Description("Spin around dropped weapons and tools above the ground")]
     class SpinDrop : RustPlugin
     {
+        #region Configuration
+
+        private static Configuration _config;
         
-        // TODO config
+        private class Configuration
+        {
+            [JsonProperty(PropertyName = "Speed Modifier")]
+            public float SpeedModifier = 125f;
+        }
+
+        protected override void LoadConfig()
+        {
+            base.LoadConfig();
+            try
+            {
+                _config = Config.ReadObject<Configuration>();
+                if (_config == null) throw new Exception();
+            }
+            catch
+            {
+                Config.WriteObject(_config, false, $"{Interface.Oxide.ConfigDirectory}/{Name}.jsonError");
+                PrintError("The configuration file contains an error and has been replaced with a default config.\n" +
+                           "The error configuration file was saved in the .jsonError extension");
+                LoadDefaultConfig();
+            }
+
+            SaveConfig();
+        }
+
+        protected override void LoadDefaultConfig() => _config = new Configuration();
+
+        protected override void SaveConfig() => Config.WriteObject(_config);
+
+        #endregion
+        
+        #region Hooks
+
         private void OnItemDropped(Item item, BaseEntity entity)
         {
-            var category = item.info.category.ToString();
-            if (category == "Weapon" || category == "Tool")
-            {
-                var gameObject = item.GetWorldEntity().gameObject;
-                var rigidBody = gameObject.GetComponent<Rigidbody>();
-                rigidBody.useGravity = false;
-                rigidBody.isKinematic = true;
-                gameObject.transform.position = new Vector3(gameObject.transform.position.x, gameObject.transform.position.y - 1f, gameObject.transform.position.z);
-                gameObject.AddComponent<SpinDropControl>();
-            }
+            var gameObject = item.GetWorldEntity().gameObject;
+            gameObject.AddComponent<SpinDropControl>();
         }
+
+        #endregion
+        
+        #region Controller
 
         public class SpinDropControl : MonoBehaviour
         {
-            public int speed = 100;
+            private void OnCollisionEnter(Collision other)
+            {
+                var rigidbody = gameObject.GetComponent<Rigidbody>();
+                rigidbody.useGravity = false;
+                rigidbody.isKinematic = true;
+            }
 
             private void Update()
             {
-                gameObject.transform.Rotate(Vector3.down * Time.deltaTime * speed);
+                gameObject.transform.Rotate(Vector3.down * Time.deltaTime * _config.SpeedModifier);
             }
         }
+        
+        #endregion
     }
 }
