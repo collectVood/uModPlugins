@@ -3,9 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 using Newtonsoft.Json;
 using Oxide.Core;
+using Oxide.Core.Database;
 using Oxide.Core.Libraries;
-using Random = System.Random;
-// ReSharper disable UnusedMember.Local
+using Oxide.Core.SQLite.Libraries;
 
 namespace Oxide.Plugins
 {
@@ -15,11 +15,19 @@ namespace Oxide.Plugins
     {
         #region Variables
         
+        // TODO: Finish auto load MySQL - SQLite
+        // TODO: Fix FileSystem (old LoadCustomData must be in the plugin (._.) )
+        // Yes i am a little bit stupid and removed it
+        
         private Dictionary<ulong, PlayerData> _data = new Dictionary<ulong, PlayerData>();
         private Dictionary<string, string> _pluginData = new Dictionary<string, string>();
 
-        private Random _rnd = new Random();
         private Time _time = GetLibrary<Time>();
+
+        private Core.MySql.Libraries.MySql _mysql = GetLibrary<Core.MySql.Libraries.MySql>();
+        private SQLite _sqlite = GetLibrary<SQLite>();
+
+        private Connection _connection;
         
         #endregion
         
@@ -31,6 +39,24 @@ namespace Oxide.Plugins
         {
             [JsonProperty(PropertyName = "Debug")]
             public bool Debug = false;
+
+            [JsonProperty(PropertyName = "Storage: Files (0), MySQL (1), SQLite (2)")]
+            public int StorageType = 0;
+
+            [JsonProperty(PropertyName = "MySQL: Host")]
+            public string MySQLHost = "127.0.0.1";
+
+            [JsonProperty(PropertyName = "MySQL: Port")]
+            public int MySQLPort = 0;
+
+            [JsonProperty(PropertyName = "MySQL: Database")]
+            public string MySQLDatabase = "connectiondb";
+
+            [JsonProperty(PropertyName = "MySQL: User")]
+            public string MySQLUser = "connectiondb";
+
+            [JsonProperty(PropertyName = "MySQL: Password")]
+            public string MySQLPassword = "";
 
             [JsonProperty(PropertyName = "Time Between Self-Deletion and Last Connection (sec)")]
             public uint TimeToDelete = 259200;
@@ -63,47 +89,69 @@ namespace Oxide.Plugins
         
         #region Work with Data
 
-        private void SaveData()
-        {
-            foreach (var kvp in _pluginData)
-            {
-                Interface.Oxide.DataFileSystem.WriteObject($"ConnectionDB/{kvp.Key}", kvp.Value);
-            }
-            
-            Interface.Oxide.DataFileSystem.WriteObject(Name, _data);
-        }
-
         private void LoadData()
         {
-            try
+            switch (_config.StorageType)
             {
-                _data = Interface.Oxide.DataFileSystem.ReadObject<Dictionary<ulong, PlayerData>>(Name);
+                case 0:
+                {
+                    LoadData();
+                    break;
+                }
+                
+                case 1:
+                {
+                    SaveDataMySQL();
+                    break;
+                }
+                
+                case 2:
+                {
+                    SaveDataSQLite();
+                    break;
+                }
             }
-            catch (Exception e)
+            
+            var data = GetPluginData(Name);
+            if (string.IsNullOrEmpty(data))
             {
-                PrintError($"Error: {e.Message}\n" +
-                          $"Description: {e.StackTrace}");
+                var oldData = Interface.Oxide.DataFileSystem.ReadObject<Dictionary<ulong, PlayerData>>(Name);
+                _data = oldData ?? new Dictionary<ulong, PlayerData>();
             }
-
-            if (_data == null) _data = new Dictionary<ulong, PlayerData>();
+            else
+            {
+                var deserializedData = JsonConvert.DeserializeObject<Dictionary<ulong, PlayerData>>(data, new JsonSerializerSettings
+                {
+                    ObjectCreationHandling = ObjectCreationHandling.Replace
+                });
+                
+                if (deserializedData == null)
+                    _data = new Dictionary<ulong, PlayerData>();
+            }
         }
 
-        private bool LoadCustomData(string key)
+        private void SaveData()
         {
-            try
+            switch (_config.StorageType)
             {
-                var data = Interface.GetMod().DataFileSystem.ReadObject<string>($"ConnectionDB/{key}");
-                if (data == null)
-                    return false;
-
-                _pluginData[key] = data;
+                case 0:
+                {
+                    SaveDataFileSystem();
+                    break;
+                }
+                
+                case 1:
+                {
+                    SaveDataMySQL();
+                    break;
+                }
+                
+                case 2:
+                {
+                    SaveDataSQLite();
+                    break;
+                }
             }
-            catch (Exception)
-            {
-                return false;
-            }
-
-            return true;
         }
 
         private class PlayerData
@@ -117,10 +165,90 @@ namespace Oxide.Plugins
 
         #endregion
         
+        #region Storage Helpers
+        
+        // Data Saving and Loading
+
+        private void SaveDataMySQL()
+        {
+            foreach (var kvp in _pluginData)
+            {
+                var query = $"INSERT INTO connectiondb ( title, data ) VALUES ( {kvp.Key}, {kvp.Value} ) ON DUPLICATE KEY UPDATE title=\"{kvp.Key}\", data=\"{kvp.Value}\"";
+                PrintDebug($"Query: {query}");
+                var sql = Sql.Builder.Append(query);
+                _mysql.ExecuteNonQuery(sql, _connection);
+            }
+        }
+
+        private void LoadDataMySQL()
+        {
+            var query = "SELECT * FROM connectiondb";
+            PrintDebug($"Query: {query}");
+            var sql = Sql.Builder.Append(query);
+            _mysql.Query(sql, _connection, list =>
+            {
+                
+            });
+        }
+
+        private void SaveDataSQLite()
+        {
+            
+        }
+
+        private void LoadDataSQLite()
+        {
+            
+        }
+
+        private void SaveDataFileSystem()
+        {
+            foreach (var kvp in _pluginData)
+            {
+                Interface.Oxide.DataFileSystem.WriteObject($"ConnectionDB/{kvp.Key}", kvp.Value);
+            }
+        }
+
+        private string LoadCustomDataFileSystem(string key) => Interface.GetMod().DataFileSystem.ReadObject<string>($"ConnectionDB/{key}");
+        
+        // DataBase Helpers
+
+        private void DatabaseInitialize()
+        {
+            // MySQL
+            
+            if (_config.StorageType == 1)
+            {
+                var sql = Sql.Builder.Append("CREATE TABLE IF NOT EXISTS connectiondb (title TINYTEXT PRIMARY KEY, data LONGTEXT)");
+                _mysql.Insert(sql, _connection);
+            }
+
+            // SQLite
+            
+            else if (_config.StorageType == 2)
+            {
+                var sql = Sql.Builder.Append("CREATE TABLE IF NOT EXISTS connectiondb (title TEXT PRIMARY KEY, data TEXT)");
+                _sqlite.Insert(sql, _connection);
+            }
+        }
+        
+        #endregion
+        
         #region Hooks
 
         private void OnServerInitialized()
         {
+            if (_config.StorageType == 1)
+            {
+                _connection = _mysql.OpenDb(_config.MySQLHost, _config.MySQLPort, _config.MySQLDatabase, _config.MySQLUser, _config.MySQLPassword, this);
+            }
+            else if (_config.StorageType == 2)
+            {
+                var file = $"{Interface.GetMod().DataDirectory}/{Name}";
+                PrintDebug($"SQLite File Path: {file}");
+                _connection = _sqlite.OpenDb(file, this);
+            }
+            
             LoadData();
             Puts($"Loaded users: {ConnectionsCount()}.");
 
@@ -247,10 +375,7 @@ namespace Oxide.Plugins
         private string GetPluginData(string key)
         {
             PrintDebug($"Getting data from key '{key}'..");
-            if (!_pluginData.ContainsKey(key) && !LoadCustomData(key))
-                return string.Empty;
-            
-            return _pluginData[key];
+            return _pluginData.ContainsKey(key) ? _pluginData[key] : string.Empty;
         }
         
         #endregion
