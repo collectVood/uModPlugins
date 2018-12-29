@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using Newtonsoft.Json;
 using Oxide.Core;
 using UnityEngine;
@@ -36,6 +37,15 @@ namespace Oxide.Plugins
         {
             [JsonProperty(PropertyName = "Permission")]
             public string Permission = "quicksmelt.use";
+            
+            [JsonProperty(PropertyName = "Speed Multipliers", ObjectCreationHandling = ObjectCreationHandling.Replace)]
+            public Dictionary<string, float> SpeedMultipliers = new Dictionary<string, float>
+            {
+                { "shortname", 1.0f }
+            };
+
+            [JsonProperty(PropertyName = "Debug")]
+            public bool Debug = false;
         }
         
         protected override void LoadConfig()
@@ -67,54 +77,77 @@ namespace Oxide.Plugins
 
         private void Unload()
         {
-            // Make sure to always return things to their vanilla state
-            foreach(var oven in UnityEngine.Object.FindObjectsOfType<BaseOven>())
+            var ovens = UnityEngine.Object.FindObjectsOfType<BaseOven>();
+            PrintDebug($"Processing BaseOven(s).. Amount: {ovens.Length}.");
+            
+            for (var i = 0; i < ovens.Length; i++)
             {
-                oven.allowByproductCreation = true;
+                var oven = ovens[i];
+                var component = oven.GetComponent<FurnaceController>();
 
                 if (oven.IsOn())
                 {
-                    // Stop the modded smelting, resume the vanilla smelting
-                    StopCooking(oven);
+                    PrintDebug("Oven is on. Restarted cooking");
+                    component.StopCooking();
                     oven.StartCooking();
                 }
 
-                // Get rid of those monobehaviors
-                UnityEngine.Object.Destroy(oven.GetComponent<FurnaceController>());
+                UnityEngine.Object.Destroy(component);
             }
+            
+            PrintDebug("Done.");
         }
 
         private void OnServerInitialized()
         {
             _instance = this;
             permission.RegisterPermission(_config.Permission, this);
+
+            var ovens = UnityEngine.Object.FindObjectsOfType<BaseOven>();
+            PrintDebug($"Processing BaseOven(s).. Amount: {ovens.Length}.");
             
-            foreach (var oven in UnityEngine.Object.FindObjectsOfType<BaseOven>())
+            for (var i = 0; i < ovens.Length; i++)
             {
+                var oven = ovens[i];
+                OnEntitySpawned(oven);
+                var component = oven.gameObject.GetComponent<FurnaceController>();
+                
                 if (!oven.IsOn())
                     continue;
-                
+
+                // Invokes are actually removed at the end of a frame, meaning you can get multiple invokes at once after reloading plugin
                 NextFrame(() =>
                 {
                     if (oven == null || oven.IsDestroyed)
                         return;
-                    
-                    // Invokes are actually removed at the end of a frame, meaning you can get multiple invokes at once after reloading plugin
-                    StopCooking(oven);
-                    StartCooking(oven);
+
+                    component.StopCooking();
+                    component.StartCooking();
                 });
             }
+            
+            PrintDebug("Done.");
         }
 
-        private object OnOvenToggle(BaseOven oven, BasePlayer player)
+        private void OnEntitySpawned(BaseNetworkable entity)
+        {
+            var oven = entity as BaseOven;
+            if (oven == null)
+                return;
+
+            oven.gameObject.AddComponent<FurnaceController>();
+        }
+
+        private object OnOvenToggle(StorageContainer oven, BasePlayer player)
         {
             if (oven is BaseFuelLightSource || oven.needsBuildingPrivilegeToUse && !player.CanBuild())
                 return null;
 
+            var component = oven.gameObject.GetComponent<FurnaceController>();
             if (oven.IsOn())
-                StopCooking(oven);
+                component.StopCooking();
             else
-                StartCooking(oven);
+                component.StartCooking();
             
             return false;
         }
@@ -123,13 +156,20 @@ namespace Oxide.Plugins
         
         #region Helpers
 
-        
+        private static void PrintDebug(string message)
+        {
+            if (_config.Debug)
+                Debug.Log($"DEBUG ({_instance.Name}) > " + message);
+        }
         
         #endregion
+        
+        #region Controller
 		
-        public class FurnaceController : MonoBehaviour
+        public class FurnaceController : FacepunchBehaviour
         {
             private BaseOven _oven;
+
             public BaseOven Furnace
             {
                 get
@@ -141,9 +181,16 @@ namespace Oxide.Plugins
                 }
             }
 
-            private void Destroy()
-            { 
-                // TODO
+            private float SmeltingFrequency
+            {
+                get
+                {
+                    float modifier;
+                    if (!_config.SpeedMultipliers.TryGetValue(Furnace.ShortPrefabName, out modifier))
+                        modifier = 1.0f;
+
+                    return 0.5f * modifier;
+                }
             }
             
             private Item FindBurnable()
@@ -168,19 +215,19 @@ namespace Oxide.Plugins
                 var item = FindBurnable();
                 if (item == null)
                 {
-                    Furnace.StopCooking();
+                    StopCooking();
                     return;
                 }
-                
-                Furnace.inventory.OnCycle(0.5f);
+
+                Furnace.inventory.OnCycle(SmeltingFrequency);
                 var slot = Furnace.GetSlot(BaseEntity.Slot.FireMod);
                 if (slot)
                 {
-                    slot.SendMessage("Cook", 0.5f, SendMessageOptions.DontRequireReceiver);
+                    slot.SendMessage("Cook", SmeltingFrequency, SendMessageOptions.DontRequireReceiver);
                 }
                 
                 var component = item.info.GetComponent<ItemModBurnable>();
-                item.fuel -= 0.5f * (Furnace.cookingTemperature / 200f);
+                item.fuel -= SmeltingFrequency * (Furnace.cookingTemperature / 200f);
                 if (!item.HasFlag(global::Item.Flag.OnFire))
                 {
                     item.SetFlag(global::Item.Flag.OnFire, true);
@@ -191,6 +238,8 @@ namespace Oxide.Plugins
                 {
                     ConsumeFuel(item, component);
                 }
+                
+                PrintDebug("Cook");
             }
 
             private void ConsumeFuel(Item fuel, ItemModBurnable burnable)
@@ -215,6 +264,32 @@ namespace Oxide.Plugins
                 fuel.fuel = burnable.fuelAmount;
                 fuel.MarkDirty();
             }
+            
+            public void StartCooking()
+            {
+                if (FindBurnable() == null)
+                {
+                    PrintDebug("No burnable.");
+                    return;
+                }
+
+                PrintDebug("Starting cooking..");
+                Furnace.inventory.temperature = Furnace.cookingTemperature;
+                Furnace.UpdateAttachmentTemperature();
+                
+                Furnace.CancelInvoke(Cook);
+                Furnace.InvokeRepeating(Cook, SmeltingFrequency, SmeltingFrequency);
+                Furnace.SetFlag(BaseEntity.Flags.On, true);
+            }
+
+            public void StopCooking()
+            {
+                PrintDebug("Stopping cooking..");
+                Furnace.CancelInvoke(Cook);
+                Furnace.StopCooking();
+            }
         }
+        
+        #endregion
     }
 }
