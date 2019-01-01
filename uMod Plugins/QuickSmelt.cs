@@ -41,7 +41,22 @@ namespace Oxide.Plugins
             [JsonProperty(PropertyName = "Speed Multipliers", ObjectCreationHandling = ObjectCreationHandling.Replace)]
             public Dictionary<string, float> SpeedMultipliers = new Dictionary<string, float>
             {
-                { "shortname", 1.0f }
+                { "furnace.shortname", 1.0f }
+            };
+            
+            [JsonProperty(PropertyName = "Fuel Usage Multipliers", ObjectCreationHandling = ObjectCreationHandling.Replace)]
+            public Dictionary<string, float> FuelMultipliers = new Dictionary<string, float>
+            {
+                { "furnace.shortname", 1.0f }
+            };
+            
+            [JsonProperty(PropertyName = "Output Multipliers", ObjectCreationHandling = ObjectCreationHandling.Replace)]
+            public Dictionary<string, Dictionary<string, float>> OutputMultipliers = new Dictionary<string, Dictionary<string, float>>
+            {
+                { "furnace.shortname", new Dictionary<string, float>
+                {
+                    { "item.shortname", 1.0f }
+                } }
             };
 
             [JsonProperty(PropertyName = "Debug")]
@@ -170,7 +185,7 @@ namespace Oxide.Plugins
         {
             private BaseOven _oven;
 
-            public BaseOven Furnace
+            private BaseOven Furnace
             {
                 get
                 {
@@ -181,7 +196,7 @@ namespace Oxide.Plugins
                 }
             }
 
-            private float SmeltingFrequency
+            private float SpeedMultiplier
             {
                 get
                 {
@@ -192,7 +207,29 @@ namespace Oxide.Plugins
                     return 0.5f * modifier;
                 }
             }
-            
+
+            private float FuelUsageMultiplier
+            {
+                get
+                {
+                    float modifier;
+                    if (!_config.FuelMultipliers.TryGetValue(Furnace.ShortPrefabName, out modifier))
+                        modifier = 1.0f;
+
+                    return modifier;
+                }
+            }
+
+            private float OutputMultiplier(string shortname)
+            {
+                Dictionary<string, float> modifiers;
+                float modifier;
+                if (!_config.OutputMultipliers.TryGetValue(Furnace.ShortPrefabName, out modifiers) || !modifiers.TryGetValue(shortname, out modifier))
+                    return 1.0f;
+
+                return modifier;
+            }
+
             private Item FindBurnable()
             {
                 if (Furnace.inventory == null)
@@ -219,15 +256,15 @@ namespace Oxide.Plugins
                     return;
                 }
 
-                Furnace.inventory.OnCycle(SmeltingFrequency);
+                Furnace.inventory.OnCycle(SpeedMultiplier);
                 var slot = Furnace.GetSlot(BaseEntity.Slot.FireMod);
                 if (slot)
                 {
-                    slot.SendMessage("Cook", SmeltingFrequency, SendMessageOptions.DontRequireReceiver);
+                    slot.SendMessage("Cook", SpeedMultiplier, SendMessageOptions.DontRequireReceiver);
                 }
                 
                 var component = item.info.GetComponent<ItemModBurnable>();
-                item.fuel -= SmeltingFrequency * (Furnace.cookingTemperature / 200f);
+                item.fuel -= SpeedMultiplier * (Furnace.cookingTemperature / 200f) * FuelUsageMultiplier;
                 if (!item.HasFlag(global::Item.Flag.OnFire))
                 {
                     item.SetFlag(global::Item.Flag.OnFire, true);
@@ -246,10 +283,11 @@ namespace Oxide.Plugins
             {
                 if (Furnace.allowByproductCreation && burnable.byproductItem != null && Random.Range(0f, 1f) > burnable.byproductChance)
                 {
-                    var item = ItemManager.Create(burnable.byproductItem, burnable.byproductAmount);
+                    var def = burnable.byproductItem;
+                    var item = ItemManager.Create(def, (int) (burnable.byproductAmount * OutputMultiplier(def.shortname))); // TODO: Work on fuel
                     if (!item.MoveToContainer(Furnace.inventory))
                     {
-                        Furnace.OvenFull();
+                        StopCooking();
                         item.Drop(Furnace.inventory.dropPosition, Furnace.inventory.dropVelocity);
                     }
                 }
@@ -278,7 +316,7 @@ namespace Oxide.Plugins
                 Furnace.UpdateAttachmentTemperature();
                 
                 Furnace.CancelInvoke(Cook);
-                Furnace.InvokeRepeating(Cook, SmeltingFrequency, SmeltingFrequency);
+                Furnace.InvokeRepeating(Cook, SpeedMultiplier, SpeedMultiplier);
                 Furnace.SetFlag(BaseEntity.Flags.On, true);
             }
 
