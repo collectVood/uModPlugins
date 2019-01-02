@@ -14,18 +14,6 @@ namespace Oxide.Plugins
         #region Variables
         
         private static QuickSmelt _instance;
-
-//        private static HashSet<string> _rawMeatNames = new HashSet<string>
-//        {
-//            "bearmeat",
-//            "meat.boar",
-//            "wolfmeat.raw",
-//            "humanmeat.raw",
-//            "fish.raw",
-//            "chicken.raw",
-//            "deermeat.raw",
-//            "horsemeat.raw"
-//        };
         
         #endregion
         
