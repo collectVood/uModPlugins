@@ -5,7 +5,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Spin Drop", "Iv Misticos", "1.0.0")]
+    [Info("Spin Drop", "Iv Misticos", "1.0.1")]
     [Description("Spin around dropped items")]
     class SpinDrop : RustPlugin
     {
@@ -48,7 +48,11 @@ namespace Oxide.Plugins
 
         private void OnItemDropped(Item item, BaseEntity entity)
         {
-            item.GetWorldEntity().gameObject.AddComponent<SpinDropControl>();
+            var gameObject = item?.GetWorldEntity()?.gameObject;
+            if (gameObject == null)
+                return;
+            
+            gameObject.AddComponent<SpinDropControl>();
         }
 
         #endregion
