@@ -167,11 +167,17 @@ namespace Oxide.Plugins
                 return null;
 
             var component = oven.gameObject.GetComponent<FurnaceController>();
-            if (oven.IsOn() && CanUse(oven.OwnerID))
+            var canUse = CanUse(oven.OwnerID);
+            if (oven.IsOn())
                 component.StopCooking();
             else
-                component.StartCooking();
-            
+            {
+                if (canUse)
+                    component.StartCooking();
+                else
+                    return null;
+            }
+
             return false;
         }
         
