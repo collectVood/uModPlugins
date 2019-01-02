@@ -40,33 +40,63 @@ namespace Oxide.Plugins
             
             [JsonProperty(PropertyName = "Use Permission")]
             public bool UsePermission = true;
-            
+
             [JsonProperty(PropertyName = "Speed Multipliers", ObjectCreationHandling = ObjectCreationHandling.Replace)]
             public Dictionary<string, float> SpeedMultipliers = new Dictionary<string, float>
             {
-                { "furnace.shortname", 1.0f }
+                {"furnace.shortname", 1.0f}
             };
-            
-            [JsonProperty(PropertyName = "Fuel Usage Speed Multipliers", ObjectCreationHandling = ObjectCreationHandling.Replace)]
+
+            [JsonProperty(PropertyName = "Fuel Usage Speed Multipliers",
+                ObjectCreationHandling = ObjectCreationHandling.Replace)]
             public Dictionary<string, float> FuelSpeedMultipliers = new Dictionary<string, float>
             {
-                { "furnace.shortname", 1.0f }
+                {"furnace.shortname", 1.0f}
             };
-            
-            [JsonProperty(PropertyName = "Fuel Usage Multipliers", ObjectCreationHandling = ObjectCreationHandling.Replace)]
-            public Dictionary<string, float> FuelMultipliers = new Dictionary<string, float>
+
+            [JsonProperty(PropertyName = "Fuel Usage Multipliers",
+                ObjectCreationHandling = ObjectCreationHandling.Replace)]
+            public Dictionary<string, int> FuelMultipliers = new Dictionary<string, int>
             {
-                { "furnace.shortname", 1.0f }
+                {"furnace.shortname", 1}
             };
-            
+
             [JsonProperty(PropertyName = "Output Multipliers", ObjectCreationHandling = ObjectCreationHandling.Replace)]
-            public Dictionary<string, Dictionary<string, float>> OutputMultipliers = new Dictionary<string, Dictionary<string, float>>
-            {
-                { "furnace.shortname", new Dictionary<string, float>
+            public Dictionary<string, Dictionary<string, float>> OutputMultipliers =
+                new Dictionary<string, Dictionary<string, float>>
                 {
-                    { "item.shortname", 1.0f }
-                } }
+                    {
+                        "furnace.shortname", new Dictionary<string, float>
+                        {
+                            {"item.shortname", 1.0f}
+                        }
+                    }
+                };
+
+            [JsonProperty(PropertyName = "Whitelist", ObjectCreationHandling = ObjectCreationHandling.Replace)]
+            public Dictionary<string, List<string>> Whitelist = new Dictionary<string, List<string>>
+            {
+                {
+                    "furnace.shortname", new List<string>
+                    {
+                        "item.shortname"
+                    }
+                }
             };
+
+            [JsonProperty(PropertyName = "Blacklist", ObjectCreationHandling = ObjectCreationHandling.Replace)]
+            public Dictionary<string, List<string>> Blacklist = new Dictionary<string, List<string>>
+            {
+                {
+                    "furnace.shortname", new List<string>
+                    {
+                        "item.shortname"
+                    }
+                }
+            };
+
+            [JsonProperty(PropertyName = "Smelting Frequency (Smelt items every N smelting ticks)")]
+            public int SmeltingFrequency = 2;
 
             [JsonProperty(PropertyName = "Debug")]
             public bool Debug = false;
@@ -200,6 +230,8 @@ namespace Oxide.Plugins
 		
         public class FurnaceController : FacepunchBehaviour
         {
+            private int _ticks;
+            
             private BaseOven _oven;
 
             private BaseOven Furnace
@@ -221,7 +253,7 @@ namespace Oxide.Plugins
                     if (!_config.SpeedMultipliers.TryGetValue(Furnace.ShortPrefabName, out modifier))
                         modifier = 1.0f;
 
-                    return 0.5f * modifier;
+                    return 0.5f / modifier;
                 }
             }
 
@@ -237,13 +269,13 @@ namespace Oxide.Plugins
                 }
             }
 
-            private float FuelUsageMultiplier
+            private int FuelUsageMultiplier
             {
                 get
                 {
-                    float modifier;
+                    int modifier;
                     if (!_config.FuelMultipliers.TryGetValue(Furnace.ShortPrefabName, out modifier))
-                        modifier = 1.0f;
+                        modifier = 1;
 
                     return modifier;
                 }
@@ -256,7 +288,25 @@ namespace Oxide.Plugins
                 if (!_config.OutputMultipliers.TryGetValue(Furnace.ShortPrefabName, out modifiers) || !modifiers.TryGetValue(shortname, out modifier))
                     return 1.0f;
 
+                PrintDebug($"{shortname} modifier: {modifier}");
                 return modifier;
+            }
+
+            private bool? IsAllowed(string shortname)
+            {
+                List<string> blacklist;
+                List<string> whitelist;
+                if (!_config.Blacklist.TryGetValue(Furnace.ShortPrefabName, out blacklist) &
+                    !_config.Whitelist.TryGetValue(Furnace.ShortPrefabName, out whitelist))
+                    return null;
+
+                if (blacklist != null && blacklist.Contains(shortname))
+                    return false;
+
+                if (whitelist != null && whitelist.Contains(shortname))
+                    return true;
+
+                return null;
             }
 
             private Item FindBurnable()
@@ -285,7 +335,7 @@ namespace Oxide.Plugins
                     return;
                 }
 
-                SmeltItems(SpeedMultiplier);
+                SmeltItems();
                 var slot = Furnace.GetSlot(BaseEntity.Slot.FireMod);
                 if (slot)
                 {
@@ -304,6 +354,8 @@ namespace Oxide.Plugins
                 {
                     ConsumeFuel(item, component);
                 }
+
+                _ticks++;
             }
 
             private void ConsumeFuel(Item fuel, ItemModBurnable burnable)
@@ -325,13 +377,16 @@ namespace Oxide.Plugins
                     return;
                 }
                 
-                fuel.amount -= (int) FuelUsageMultiplier;
+                fuel.amount -= FuelUsageMultiplier;
                 fuel.fuel = burnable.fuelAmount;
                 fuel.MarkDirty();
             }
 
-            private void SmeltItems(float delta)
+            private void SmeltItems()
             {
+                if (_ticks % _config.SmeltingFrequency != 0)
+                    return;
+                
                 for (var i = 0; i < Furnace.inventory.itemList.Count; i++)
                 {
                     // Getting item and checking if it's valid
@@ -344,12 +399,15 @@ namespace Oxide.Plugins
                     if (cookable == null)
                         continue;
 
-                    // It's cook time!
-                    var cooktimeLeft = cookable.cookTime;
+                    // Checking if item's cooking is allowed
+                    var isAllowed = IsAllowed(item.info.shortname);
+                    if (isAllowed != null && isAllowed.Equals(false)) // Allowed is false? Okay, no problem. Don't cook this item
+                        continue;
                     
                     // What about temperature?
+                    // This lets us deny cooking, for example, meat in furnaces
                     var temperature = item.temperature;
-                    if (temperature < cookable.lowTemp || temperature > cookable.highTemp || cooktimeLeft < 0f)
+                    if ((temperature < cookable.lowTemp || temperature > cookable.highTemp) && isAllowed == null) // Not allowed, not denied? That's our case! Because if it's allowed, this function won't be executed :P
                     {
                         if (!cookable.setCookingFlag || !item.HasFlag(global::Item.Flag.Cooking)) continue;
                         item.SetFlag(global::Item.Flag.Cooking, false);
@@ -364,19 +422,10 @@ namespace Oxide.Plugins
                         item.MarkDirty();
                     }
                     
-                    // Time ran out?
-                    cooktimeLeft -= delta;
-                    if (cooktimeLeft > 0f)
-                    {
-                        continue;
-                    }
-                    
                     // Changing amount
                     var position = item.position;
                     if (item.amount > 1)
                     {
-                        // I don't know why cooktimeLeft is used here. It was in game code
-                        cooktimeLeft = cookable.cookTime;
                         item.amount--;
                         item.MarkDirty();
                     }
