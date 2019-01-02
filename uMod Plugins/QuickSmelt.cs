@@ -284,6 +284,7 @@ namespace Oxide.Plugins
                 if (Furnace.allowByproductCreation && burnable.byproductItem != null && Random.Range(0f, 1f) > burnable.byproductChance)
                 {
                     var def = burnable.byproductItem;
+                    PrintDebug(def.shortname);
                     var item = ItemManager.Create(def, (int) (burnable.byproductAmount * OutputMultiplier(def.shortname))); // TODO: Work on fuel
                     if (!item.MoveToContainer(Furnace.inventory))
                     {
