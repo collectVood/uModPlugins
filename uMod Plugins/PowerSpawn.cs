@@ -13,7 +13,7 @@ namespace Oxide.Plugins
     {
         #region Variables
 
-        private int _worldSize = 0;
+        private int _worldSize;
 
         private Random _random = new Random();
         
@@ -42,7 +42,7 @@ namespace Oxide.Plugins
             }
             catch
             {
-                Config.WriteObject(_config, false, $"{Interface.GetMod().ConfigDirectory}/{Name}.jsonError");
+                Config.WriteObject(_config, false, $"{Interface.Oxide.ConfigDirectory}/{Name}.jsonError");
                 PrintError("The configuration file contains an error and has been replaced with a default config.\n" +
                            "The error configuration file was saved in the .jsonError extension");
                 LoadDefaultConfig();
@@ -110,7 +110,7 @@ namespace Oxide.Plugins
         private void PrintDebug(string message)
         {
             if (_config.Debug)
-                Debug.Log($"DEBUG ({Name}) > " + message);
+                Interface.Oxide.LogDebug($"{Name} > " + message);
         }
 
         #endregion
