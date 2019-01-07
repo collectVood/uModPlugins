@@ -7,7 +7,7 @@ using Random = UnityEngine.Random;
 
 namespace Oxide.Plugins
 {
-    [Info("Quick Smelt", "Iv Misticos", "5.0.2")]
+    [Info("Quick Smelt", "Iv Misticos", "5.0.3")]
     [Description("Increases the speed of the furnace smelting")]
     class QuickSmelt : RustPlugin
     {
@@ -317,7 +317,8 @@ namespace Oxide.Plugins
                 float modifier;
                 if (!_config.OutputMultipliers.TryGetValue(Furnace.ShortPrefabName, out modifiers) &&
                     !_config.OutputMultipliers.TryGetValue("global", out modifiers) ||
-                    modifiers.TryGetValue(shortname, out modifier) && modifiers.TryGetValue("global", out modifier))
+                    !modifiers.TryGetValue(shortname, out modifier) &&
+                    !modifiers.TryGetValue("global", out modifier))
                     return 1.0f;
 
                 PrintDebug($"{shortname} modifier: {modifier}");
