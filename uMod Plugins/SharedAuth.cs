@@ -1,29 +1,29 @@
-﻿using Newtonsoft.Json.Linq;
+﻿using System.Collections.Generic;
+using Newtonsoft.Json.Linq;
 using Oxide.Core;
 using Oxide.Core.Libraries.Covalence;
 using Oxide.Core.Plugins;
-using System;
-using System.Collections.Generic;
 using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Shared Doors", "Iv Misticos", "1.0.0")]
-    [Description("Making sharing doors easier.")]
-    public class SharedDoors : CovalencePlugin
+    [Info("Shared Auth", "Iv Misticos", "1.0.0")]
+    [Description("Make sharing auth better")]
+    public class SharedAuth : CovalencePlugin
     {
         #region Variables
         
         [PluginReference]
+        // ReSharper disable once InconsistentNaming
         private Plugin Clans;
 
-        private static SharedDoors instance;
-        private const string RUST_IO = "clans";
-        private const string CLANS_NAME = "Clans";
-        private const string RUST_CLANS_HOOK = "SharedDoors now hooking to Rust:IO Clans";
-        private const string RUST_CLANS_NOT_FOUND = "Rust Clans has not been found.";
-        private const string MASTER_PERM = "shareddoors.master";
-        private MasterKeyHolders holders;
+        private static SharedAuth _instance;
+        private const string RustIo = "clans";
+        private const string ClansName = "Clans";
+        private const string RustClansHook = "SharedDoors now hooking to Rust:IO Clans";
+        private const string RustClansNotFound = "Rust Clans has not been found.";
+        private const string MasterPerm = "shareddoors.master";
+        private MasterKeyHolders _holders;
         
         #endregion
         
@@ -31,67 +31,65 @@ namespace Oxide.Plugins
 
         private void OnServerInitialized()
         {
-            instance = this;
-            permission.RegisterPermission(MASTER_PERM, this);
-            holders = new MasterKeyHolders();
+            _instance = this;
+            permission.RegisterPermission(MasterPerm, this);
             if (Clans == null)
             {
-                Puts(RUST_CLANS_NOT_FOUND);
+                Puts(RustClansNotFound);
             }
             else
             {
-                Puts(RUST_CLANS_HOOK);
+                Puts(RustClansHook);
             }
         }
 
         private void Unload()
         {
-            instance = null;
+            _instance = null;
         }
 
         private void OnPluginLoaded(Plugin plugin)
         {
-            if (plugin.Name == CLANS_NAME)
+            if (plugin.Name == ClansName)
             {
-                Puts(RUST_CLANS_HOOK);
+                Puts(RustClansHook);
                 Clans = plugin;
             }
         }
 
         private void OnPluginUnloaded(Plugin name)
         {
-            if (name.Name == CLANS_NAME)
+            if (name.Name == ClansName)
             {
-                Puts(RUST_CLANS_HOOK);
+                Puts(RustClansHook);
                 Clans = null;
             }
         }
 
         private void OnPlayerInit(BasePlayer player)
         {
-            IPlayer iPlayer = covalence.Players.FindPlayerById(player.userID.ToString());
-            if (player.IsAdmin || iPlayer.HasPermission(MASTER_PERM))
+            var iPlayer = covalence.Players.FindPlayerById(player.userID.ToString());
+            if (player.IsAdmin || iPlayer.HasPermission(MasterPerm))
             {
-                holders.AddMaster(player.userID.ToString());
+                _holders.AddMaster(player.userID.ToString());
             }
         }
 
         private void OnPlayerDisconnected(BasePlayer player, string reason)
         {
-            IPlayer iPlayer = covalence.Players.FindPlayerById(player.userID.ToString());
-            if (player.IsAdmin || iPlayer.HasPermission(MASTER_PERM))
+            var iPlayer = covalence.Players.FindPlayerById(player.userID.ToString());
+            if (player.IsAdmin || iPlayer.HasPermission(MasterPerm))
             {
-                holders.RemoveMaster(player.userID.ToString());
+                _holders.RemoveMaster(player.userID.ToString());
             }
         }
 
         private bool CanUseLockedEntity(BasePlayer player, BaseLock door)
         {
-            IPlayer iPlayer = covalence.Players.FindPlayerById(player.userID.ToString());
-            bool canUse = false;
-            canUse = (player.IsAdmin && holders.IsAKeyMaster(player.userID.ToString()))
-            || (iPlayer.HasPermission(MASTER_PERM) && holders.IsAKeyMaster(player.userID.ToString()))
-            || new DoorAuthorizer(door, player).CanOpen();
+            var iPlayer = covalence.Players.FindPlayerById(player.userID.ToString());
+            var canUse = player.IsAdmin && _holders.IsAKeyMaster(player.userID.ToString())
+                          || iPlayer.HasPermission(MasterPerm) && _holders.IsAKeyMaster(player.userID.ToString())
+                          || new DoorAuthorizer(door, player).CanOpen();
             return canUse;
         }
         
@@ -99,8 +97,7 @@ namespace Oxide.Plugins
         
         #region Commands
 
-        [Command("sd")]
-        private void SharedDoorsCommand(IPlayer player, string command, string[] args)
+        private void CommandChatSharedAuth(BasePlayer player, string command, string[] args)
         {
             if (args.Length > 0)
             {
@@ -110,12 +107,12 @@ namespace Oxide.Plugins
                 }
                 else if (args[0].ToLower() == "mastermode" || args[0].ToLower() == "mm")
                 {
-                    if (player.IsAdmin || player.HasPermission(MASTER_PERM))
+                    if (player.IsAdmin || player.HasPermission(MasterPerm))
                     {
-                        if (holders.HasMaster(player.Id))
+                        if (_holders.HasMaster(player.Id))
                         {
-                            holders.ToggleMasterMode(player.Id);
-                            if (holders.IsAKeyMaster(player.Id))
+                            _holders.ToggleMasterMode(player.Id);
+                            if (_holders.IsAKeyMaster(player.Id))
                             {
                                 PlayerResponder.NotifyUser(player, "Master Mode Enabled. You can now open all doors and chests.");
                             }
@@ -126,8 +123,8 @@ namespace Oxide.Plugins
                         }
                         else
                         {
-                            holders.AddMaster(player.Id);
-                            holders.GiveMasterKey(player.Id);
+                            _holders.AddMaster(player.Id);
+                            _holders.GiveMasterKey(player.Id);
                             PlayerResponder.NotifyUser(player, "Master Mode Enabled. You can now open all doors and chests.");
                         }
                     }
@@ -147,55 +144,44 @@ namespace Oxide.Plugins
         
         #region Helpers
 
-        public static SharedDoors getInstance()
-        {
-            return instance;
-        }
-
         private class PlayerResponder
         {
-            private const String PREFIX = "<color=#00ffffff>[</color><color=#ff0000ff>SharedDoors</color><color=#00ffffff>]</color>";
+            private const string Prefix = "<color=#00ffffff>[</color><color=#ff0000ff>SharedDoors</color><color=#00ffffff>]</color>";
 
-            public static void NotifyUser(IPlayer player, String message)
+            public static void NotifyUser(IPlayer player, string message)
             {
-                player.Message(PREFIX + " " + message);
+                player.Message(Prefix + " " + message);
             }
         }
-
-        /*
-         *
-         * Door Handler Class
-         *
-         * */
 
         private class DoorAuthorizer
         {
             public BaseLock BaseDoor { get; protected set; }
             public BasePlayer Player { get; protected set; }
-            private ToolCupboardChecker checker;
-            private RustIOHandler handler;
+            private ToolCupboardChecker _checker;
+            private RustIoHandler _handler;
 
             public DoorAuthorizer(BaseLock door, BasePlayer player)
             {
-                this.BaseDoor = door;
-                this.Player = player;
-                checker = new ToolCupboardChecker(Player);
-                handler = new RustIOHandler(this);
+                BaseDoor = door;
+                Player = player;
+                _checker = new ToolCupboardChecker(Player);
+                _handler = new RustIoHandler(this);
             }
 
             public bool CanOpen()
             {
-                bool canUse = false;
+                var canUse = false;
                 if (BaseDoor.IsLocked())
                 {
                     if (BaseDoor is CodeLock)
                     {
-                        CodeLock codeLock = (CodeLock)BaseDoor;
+                        var codeLock = (CodeLock)BaseDoor;
                         canUse = CanOpenCodeLock(codeLock, Player);
                     }
                     else if (BaseDoor is KeyLock)
                     {
-                        KeyLock keyLock = (KeyLock)BaseDoor;
+                        var keyLock = (KeyLock)BaseDoor;
                         canUse = CanOpenKeyLock(keyLock, Player);
                     }
                 }
@@ -208,16 +194,16 @@ namespace Oxide.Plugins
 
             private bool CanOpenCodeLock(CodeLock door, BasePlayer player)
             {
-                bool canUse = false;
+                var canUse = false;
                 var whitelist = door.whitelistPlayers;
                 canUse = whitelist.Contains(player.userID);
 
                 if (!canUse)
                 {
-                    canUse = (player.CanBuild() && checker.IsPlayerAuthorized());
-                    if (canUse && handler.ClansAvailable())
+                    canUse = player.CanBuild() && _checker.IsPlayerAuthorized();
+                    if (canUse && _handler.ClansAvailable())
                     {
-                        canUse = handler.IsInClan(player);
+                        canUse = _handler.IsInClan(player);
                     }
                 }
 
@@ -227,31 +213,17 @@ namespace Oxide.Plugins
 
             private bool CanOpenKeyLock(KeyLock door, BasePlayer player)
             {
-                bool canUse = false;
-
-                canUse = door.HasLockPermission(player) || (player.CanBuild() && checker.IsPlayerAuthorized());
+                var canUse = door.HasLockPermission(player) || player.CanBuild() && _checker.IsPlayerAuthorized();
 
                 return canUse;
             }
 
             private void PlaySound(bool canUse, CodeLock door, BasePlayer player)
             {
-                if (canUse)
-                {
-                    Effect.server.Run(door.effectUnlocked.resourcePath, player.transform.position, Vector3.zero, null, false);
-                }
-                else
-                {
-                    Effect.server.Run(door.effectDenied.resourcePath, player.transform.position, Vector3.zero, null, false);
-                }
+                Effect.server.Run(canUse ? door.effectUnlocked.resourcePath : door.effectDenied.resourcePath,
+                    player.transform.position, Vector3.zero);
             }
         }
-
-        /*
-         *
-         * Tool Cupboard Tool
-         *
-         * */
 
         private class ToolCupboardChecker
         {
@@ -259,7 +231,7 @@ namespace Oxide.Plugins
 
             public ToolCupboardChecker(BasePlayer player)
             {
-                this.Player = player;
+                Player = player;
             }
 
             public bool IsPlayerAuthorized()
@@ -268,56 +240,50 @@ namespace Oxide.Plugins
             }
         }
 
-        /*
-         *
-         * RustIO Handler
-         *
-         * */
-
-        private class RustIOHandler
+        private class RustIoHandler
         {
-            private const string GET_CLAN_OF_PLAYER = "GetClanOf";
-            private const string GET_CLAN = "GetClan";
-            private const string MEMBERS = "members";
+            private const string GetClanOfPlayer = "GetClanOf";
+            private const string GetClan = "GetClan";
+            private const string Members = "members";
             public Plugin Clans { get; protected set; }
             public ulong OriginalPlayerID { get; protected set; }
             public DoorAuthorizer Door { get; protected set; }
 
-            public RustIOHandler(DoorAuthorizer door)
+            public RustIoHandler(DoorAuthorizer door)
             {
                 if (door.BaseDoor is CodeLock)
                 {
-                    CodeLock codeLock = door.BaseDoor as CodeLock;
-                    List<ulong> whitelist = codeLock.whitelistPlayers;
+                    var codeLock = door.BaseDoor as CodeLock;
+                    var whitelist = codeLock.whitelistPlayers;
                     if (whitelist.Count > 0)
                     {
-                        this.OriginalPlayerID = whitelist[0];
+                        OriginalPlayerID = whitelist[0];
                     }
                     else
                     {
-                        this.OriginalPlayerID = 0;
+                        OriginalPlayerID = 0;
                     }
                 }
-                this.Door = door;
-                this.Clans = SharedDoors.getInstance().Clans;
+                Door = door;
+                Clans = _instance.Clans;
             }
 
             public bool IsInClan(BasePlayer player)
             {
-                bool isInClan = false;
+                var isInClan = false;
                 if (ClansAvailable())
                 {
-                    object obj = Clans.CallHook(GET_CLAN_OF_PLAYER, new object[] { OriginalPlayerID });
+                    var obj = Clans.CallHook(GetClanOfPlayer, OriginalPlayerID);
                     if (obj != null)
                     {
-                        String clanName = obj.ToString();
-                        object clan = Clans.CallHook(GET_CLAN, new object[] { clanName });
+                        var clanName = obj.ToString();
+                        var clan = Clans.CallHook(GetClan, clanName);
                         if (clan != null)
                         {
-                            JObject jObject = JObject.FromObject(clan);
-                            JArray members = (JArray)jObject.GetValue(MEMBERS);
-                            string[] memberIds = members.ToObject<string[]>();
-                            isInClan = (memberIds.Contains(player.userID.ToString()));
+                            var jObject = JObject.FromObject(clan);
+                            var members = (JArray)jObject.GetValue(Members);
+                            var memberIds = members.ToObject<string[]>();
+                            isInClan = memberIds.Contains(player.userID.ToString());
                         }
                     }
                 }
@@ -327,60 +293,54 @@ namespace Oxide.Plugins
 
             public bool ClansAvailable()
             {
-                return this.Clans != null;
+                return Clans != null;
             }
         }
 
-        /*
-       *
-       * Admin Mode Handler
-       *
-       * */
-
         private class MasterKeyHolders
         {
-            private Dictionary<string, PlayerSettings> keyMasters;
+            private Dictionary<string, PlayerSettings> _keyMasters;
 
             public MasterKeyHolders()
             {
-                keyMasters = new Dictionary<string, PlayerSettings>();
+                _keyMasters = new Dictionary<string, PlayerSettings>();
             }
 
-            public void AddMaster(String id)
+            public void AddMaster(string id)
             {
-                this.keyMasters.Add(id, new PlayerSettings(false));
+                _keyMasters.Add(id, new PlayerSettings(false));
             }
 
-            public void RemoveMaster(String id)
+            public void RemoveMaster(string id)
             {
-                this.keyMasters.Remove(id);
+                _keyMasters.Remove(id);
             }
 
-            public void GiveMasterKey(String id)
+            public void GiveMasterKey(string id)
             {
-                PlayerSettings settings = null;
-                bool exists = keyMasters.TryGetValue(id, out settings);
+                PlayerSettings settings;
+                var exists = _keyMasters.TryGetValue(id, out settings);
                 if (exists)
                 {
                     settings.IsMasterKeyHolder = true;
                 }
             }
 
-            public void RemoveMasterKey(String id)
+            public void RemoveMasterKey(string id)
             {
-                PlayerSettings settings = null;
-                bool exists = keyMasters.TryGetValue(id, out settings);
+                PlayerSettings settings;
+                var exists = _keyMasters.TryGetValue(id, out settings);
                 if (exists)
                 {
                     settings.IsMasterKeyHolder = false;
                 }
             }
 
-            public bool IsAKeyMaster(String id)
+            public bool IsAKeyMaster(string id)
             {
-                bool isKeyMaster = false;
-                PlayerSettings settings = null;
-                bool exists = keyMasters.TryGetValue(id, out settings);
+                var isKeyMaster = false;
+                PlayerSettings settings;
+                var exists = _keyMasters.TryGetValue(id, out settings);
                 if (exists)
                 {
                     isKeyMaster = settings.IsMasterKeyHolder;
@@ -388,10 +348,10 @@ namespace Oxide.Plugins
                 return isKeyMaster;
             }
 
-            public void ToggleMasterMode(String id)
+            public void ToggleMasterMode(string id)
             {
-                PlayerSettings settings = null;
-                bool exists = keyMasters.TryGetValue(id, out settings);
+                PlayerSettings settings;
+                var exists = _keyMasters.TryGetValue(id, out settings);
                 if (exists)
                 {
                     settings.ToggleMasterMode();
@@ -400,15 +360,9 @@ namespace Oxide.Plugins
 
             public bool HasMaster(string id)
             {
-                return keyMasters.ContainsKey(id);
+                return _keyMasters.ContainsKey(id);
             }
         }
-
-        /*
-       *
-       * Player Settings
-       *
-       * */
 
         private class PlayerSettings
         {
