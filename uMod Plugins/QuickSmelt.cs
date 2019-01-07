@@ -7,7 +7,7 @@ using Random = UnityEngine.Random;
 
 namespace Oxide.Plugins
 {
-    [Info("Quick Smelt", "Iv Misticos", "5.0.1")]
+    [Info("Quick Smelt", "Iv Misticos", "5.0.2")]
     [Description("Increases the speed of the furnace smelting")]
     class QuickSmelt : RustPlugin
     {
@@ -32,6 +32,7 @@ namespace Oxide.Plugins
             [JsonProperty(PropertyName = "Speed Multipliers", ObjectCreationHandling = ObjectCreationHandling.Replace)]
             public Dictionary<string, float> SpeedMultipliers = new Dictionary<string, float>
             {
+                {"global", 1.0f},
                 {"furnace.shortname", 1.0f}
             };
 
@@ -39,13 +40,15 @@ namespace Oxide.Plugins
                 ObjectCreationHandling = ObjectCreationHandling.Replace)]
             public Dictionary<string, float> FuelSpeedMultipliers = new Dictionary<string, float>
             {
+                {"global", 1.0f},
                 {"furnace.shortname", 1.0f}
             };
 
             [JsonProperty(PropertyName = "Fuel Usage Multipliers",
                 ObjectCreationHandling = ObjectCreationHandling.Replace)]
-            public Dictionary<string, int> FuelMultipliers = new Dictionary<string, int>
+            public Dictionary<string, int> FuelUsageMultipliers = new Dictionary<string, int>
             {
+                {"global", 1},
                 {"furnace.shortname", 1}
             };
 
@@ -53,6 +56,12 @@ namespace Oxide.Plugins
             public Dictionary<string, Dictionary<string, float>> OutputMultipliers =
                 new Dictionary<string, Dictionary<string, float>>
                 {
+                    {
+                        "global", new Dictionary<string, float>
+                        {
+                            {"global", 1.0f}
+                        }
+                    },
                     {
                         "furnace.shortname", new Dictionary<string, float>
                         {
@@ -65,6 +74,12 @@ namespace Oxide.Plugins
             public Dictionary<string, List<string>> Whitelist = new Dictionary<string, List<string>>
             {
                 {
+                    "global", new List<string>
+                    {
+                        "item.shortname"
+                    }
+                },
+                {
                     "furnace.shortname", new List<string>
                     {
                         "item.shortname"
@@ -76,6 +91,12 @@ namespace Oxide.Plugins
             public Dictionary<string, List<string>> Blacklist = new Dictionary<string, List<string>>
             {
                 {
+                    "global", new List<string>
+                    {
+                        "item.shortname"
+                    }
+                },
+                {
                     "furnace.shortname", new List<string>
                     {
                         "item.shortname"
@@ -83,8 +104,13 @@ namespace Oxide.Plugins
                 }
             };
 
-            [JsonProperty(PropertyName = "Smelting Frequency (Smelt items every N smelting ticks)")]
-            public int SmeltingFrequency = 2;
+            [JsonProperty(PropertyName = "Smelting Frequencies (Smelt items every N smelting ticks)",
+                ObjectCreationHandling = ObjectCreationHandling.Replace)]
+            public Dictionary<string, int> SmeltingFrequencies = new Dictionary<string, int>
+            {
+                {"global", 1},
+                {"furnace.shortname", 1}
+            };
 
             [JsonProperty(PropertyName = "Debug")]
             public bool Debug = false;
@@ -238,7 +264,8 @@ namespace Oxide.Plugins
                 get
                 {
                     float modifier;
-                    if (!_config.SpeedMultipliers.TryGetValue(Furnace.ShortPrefabName, out modifier))
+                    if (!_config.SpeedMultipliers.TryGetValue(Furnace.ShortPrefabName, out modifier) &&
+                        !_config.SpeedMultipliers.TryGetValue("global", out modifier))
                         modifier = 1.0f;
 
                     return 0.5f / modifier;
@@ -250,7 +277,8 @@ namespace Oxide.Plugins
                 get
                 {
                     float modifier;
-                    if (!_config.FuelSpeedMultipliers.TryGetValue(Furnace.ShortPrefabName, out modifier))
+                    if (!_config.FuelSpeedMultipliers.TryGetValue(Furnace.ShortPrefabName, out modifier) &&
+                        !_config.FuelSpeedMultipliers.TryGetValue("global", out modifier))
                         modifier = 1.0f;
 
                     return modifier;
@@ -262,7 +290,21 @@ namespace Oxide.Plugins
                 get
                 {
                     int modifier;
-                    if (!_config.FuelMultipliers.TryGetValue(Furnace.ShortPrefabName, out modifier))
+                    if (!_config.FuelUsageMultipliers.TryGetValue(Furnace.ShortPrefabName, out modifier) &&
+                        !_config.FuelUsageMultipliers.TryGetValue("global", out modifier))
+                        modifier = 1;
+
+                    return modifier;
+                }
+            }
+
+            private int SmeltingFrequency
+            {
+                get
+                {
+                    int modifier;
+                    if (!_config.SmeltingFrequencies.TryGetValue(Furnace.ShortPrefabName, out modifier) &&
+                        !_config.SmeltingFrequencies.TryGetValue("global", out modifier))
                         modifier = 1;
 
                     return modifier;
@@ -273,7 +315,9 @@ namespace Oxide.Plugins
             {
                 Dictionary<string, float> modifiers;
                 float modifier;
-                if (!_config.OutputMultipliers.TryGetValue(Furnace.ShortPrefabName, out modifiers) || !modifiers.TryGetValue(shortname, out modifier))
+                if (!_config.OutputMultipliers.TryGetValue(Furnace.ShortPrefabName, out modifiers) &&
+                    !_config.OutputMultipliers.TryGetValue("global", out modifiers) ||
+                    modifiers.TryGetValue(shortname, out modifier) && modifiers.TryGetValue("global", out modifier))
                     return 1.0f;
 
                 PrintDebug($"{shortname} modifier: {modifier}");
@@ -284,8 +328,10 @@ namespace Oxide.Plugins
             {
                 List<string> blacklist;
                 List<string> whitelist;
-                if (!_config.Blacklist.TryGetValue(Furnace.ShortPrefabName, out blacklist) &
-                    !_config.Whitelist.TryGetValue(Furnace.ShortPrefabName, out whitelist))
+                if ((!_config.Blacklist.TryGetValue(Furnace.ShortPrefabName, out blacklist) ||
+                     !_config.Blacklist.TryGetValue("global", out blacklist)) &
+                    (!_config.Whitelist.TryGetValue(Furnace.ShortPrefabName, out whitelist) ||
+                     !_config.Whitelist.TryGetValue("global", out whitelist)))
                     return null;
 
                 if (blacklist != null && blacklist.Contains(shortname))
@@ -295,6 +341,22 @@ namespace Oxide.Plugins
                     return true;
 
                 return null;
+            }
+
+            private float _speedModifier;
+
+            private float _fuelSpeedMultiplier;
+
+            private int _fuelUsageMultiplier;
+
+            private int _smeltingFrequency;
+
+            private void Awake()
+            {
+                _speedModifier = SpeedMultiplier;
+                _fuelSpeedMultiplier = FuelSpeedMultiplier;
+                _fuelUsageMultiplier = FuelUsageMultiplier;
+                _smeltingFrequency = SmeltingFrequency;
             }
 
             private Item FindBurnable()
@@ -331,7 +393,7 @@ namespace Oxide.Plugins
                 }
                 
                 var component = item.info.GetComponent<ItemModBurnable>();
-                item.fuel -= 0.5f * (Furnace.cookingTemperature / 200f) * FuelSpeedMultiplier;
+                item.fuel -= 0.5f * (Furnace.cookingTemperature / 200f) * _fuelSpeedMultiplier;
                 if (!item.HasFlag(global::Item.Flag.OnFire))
                 {
                     item.SetFlag(global::Item.Flag.OnFire, true);
@@ -365,14 +427,14 @@ namespace Oxide.Plugins
                     return;
                 }
                 
-                fuel.amount -= FuelUsageMultiplier;
+                fuel.amount -= _fuelUsageMultiplier;
                 fuel.fuel = burnable.fuelAmount;
                 fuel.MarkDirty();
             }
 
             private void SmeltItems()
             {
-                if (_ticks % _config.SmeltingFrequency != 0)
+                if (_ticks % _smeltingFrequency != 0)
                     return;
                 
                 for (var i = 0; i < Furnace.inventory.itemList.Count; i++)
@@ -389,7 +451,7 @@ namespace Oxide.Plugins
 
                     // Checking if item's cooking is allowed
                     var isAllowed = IsAllowed(item.info.shortname);
-                    if (isAllowed != null && isAllowed.Equals(false)) // Allowed is false? Okay, no problem. Don't cook this item
+                    if (isAllowed != null && !isAllowed.Value) // Allowed is false? Okay, no problem. Don't cook this item
                         continue;
                     
                     // What about temperature?
@@ -402,6 +464,10 @@ namespace Oxide.Plugins
                         item.MarkDirty();
                         continue;
                     }
+                    
+                    // So, so.. what about items' cooking speed (time)?
+                    if (cookable.cookTime > 0 && _ticks * 1f / _smeltingFrequency % cookable.cookTime > 0)
+                        continue;
                     
                     // Setting cooking flag
                     if (cookable.setCookingFlag && !item.HasFlag(global::Item.Flag.Cooking))
@@ -456,7 +522,7 @@ namespace Oxide.Plugins
                 Furnace.UpdateAttachmentTemperature();
                 
                 PrintDebug($"Speed Multiplier: {SpeedMultiplier}");
-                Furnace.InvokeRepeating(Cook, SpeedMultiplier, SpeedMultiplier);
+                Furnace.InvokeRepeating(Cook, _speedModifier, _speedModifier);
                 Furnace.SetFlag(BaseEntity.Flags.On, true);
             }
 
