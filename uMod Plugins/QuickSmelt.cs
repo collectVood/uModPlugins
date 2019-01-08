@@ -7,7 +7,7 @@ using Random = UnityEngine.Random;
 
 namespace Oxide.Plugins
 {
-    [Info("Quick Smelt", "Iv Misticos", "5.0.3")]
+    [Info("Quick Smelt", "Iv Misticos", "5.0.4")]
     [Description("Increases the speed of the furnace smelting")]
     class QuickSmelt : RustPlugin
     {
@@ -329,9 +329,9 @@ namespace Oxide.Plugins
             {
                 List<string> blacklist;
                 List<string> whitelist;
-                if ((!_config.Blacklist.TryGetValue(Furnace.ShortPrefabName, out blacklist) ||
+                if ((!_config.Blacklist.TryGetValue(Furnace.ShortPrefabName, out blacklist) &&
                      !_config.Blacklist.TryGetValue("global", out blacklist)) &
-                    (!_config.Whitelist.TryGetValue(Furnace.ShortPrefabName, out whitelist) ||
+                    (!_config.Whitelist.TryGetValue(Furnace.ShortPrefabName, out whitelist) &&
                      !_config.Whitelist.TryGetValue("global", out whitelist)))
                     return null;
 
