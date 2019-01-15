@@ -7,7 +7,7 @@ using Random = System.Random;
 
 namespace Oxide.Plugins
 {
-    [Info("Power Spawn", "Iv Misticos", "1.0.0")]
+    [Info("Power Spawn", "Iv Misticos", "1.0.1")]
     [Description("Control players' spawning")]
     class PowerSpawn : RustPlugin
     {
@@ -16,6 +16,8 @@ namespace Oxide.Plugins
         private int _worldSize;
 
         private Random _random = new Random();
+
+        private readonly int _worldLayer = LayerMask.GetMask("World", "Default");
         
         #endregion
         
@@ -26,7 +28,10 @@ namespace Oxide.Plugins
         private class Configuration
         {
             [JsonProperty(PropertyName = "Minimal Distance To Building")]
-            public int DistanceBuilding = 20;
+            public int DistanceBuilding = 10;
+
+            [JsonProperty(PropertyName = "Minimal Distance To Trigger")]
+            public int DistanceTrigger = 10;
 
             [JsonProperty(PropertyName = "Debug")]
             public bool Debug = false;
@@ -99,10 +104,7 @@ namespace Oxide.Plugins
             else
                 return null;
 
-            var buildings = new List<BuildingBlock>();
-            Vis.Entities(position, _config.DistanceBuilding, buildings);
-
-            return buildings.Count > 0 ? (Vector3?) null : position;
+            return CheckBadBuilding(position) || CheckBadTrigger(position) ? (Vector3?) null : position;
         }
 
         private int GetRandomPosition() => _random.Next(_worldSize / -2, _worldSize / 2);
@@ -111,6 +113,20 @@ namespace Oxide.Plugins
         {
             if (_config.Debug)
                 Interface.Oxide.LogDebug($"{Name} > " + message);
+        }
+
+        private bool CheckBadBuilding(Vector3 position)
+        {
+            var buildings = new List<BuildingBlock>();
+            Vis.Entities(position, _config.DistanceBuilding, buildings, Rust.Layers.Construction);
+            return buildings.Count > 0;
+        }
+
+        private bool CheckBadTrigger(Vector3 position)
+        {
+            var triggers = new List<TriggerBase>();
+            Vis.Components(position, _config.DistanceTrigger, triggers, Rust.Layers.Trigger);
+            return triggers.Count > 0;
         }
 
         #endregion
