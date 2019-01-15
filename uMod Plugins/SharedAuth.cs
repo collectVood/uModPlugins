@@ -12,6 +12,8 @@ namespace Oxide.Plugins
     public class SharedAuth : CovalencePlugin
     {
         #region Variables
+        
+        private Dictionary<ulong, PlayerData> _data = new Dictionary<ulong, PlayerData>();
 
         private const string PermissionUse = "sharedauth.use";
         private const string PermissionAdmin = "sharedauth.admin";
@@ -28,6 +30,9 @@ namespace Oxide.Plugins
         {
             [JsonProperty(PropertyName = "Use Permission")]
             public bool UsePermission = true;
+            
+            [JsonProperty(PropertyName = "Command")]
+            public string Command = "sauth";
         }
 
         protected override void LoadConfig()
@@ -57,7 +62,29 @@ namespace Oxide.Plugins
         
         #region Data
         
-        
+        private void SaveData() => Interface.Oxide.DataFileSystem.WriteObject(Name, _data);
+
+        private void LoadData()
+        {
+            try
+            {
+                _data = Interface.Oxide.DataFileSystem.ReadObject<Dictionary<ulong, PlayerData>>(Name);
+            }
+            catch (Exception e)
+            {
+                PrintError(e.ToString());
+            }
+
+            if (_data == null) _data = new Dictionary<ulong, PlayerData>();
+        }
+
+        private class PlayerData
+        {
+            public bool Enabled = false;
+
+            public bool AutoTeamAuth = false;
+            public bool AllowTeamUse = true;
+        }
         
         #endregion
         
@@ -66,10 +93,16 @@ namespace Oxide.Plugins
         private void OnServerInitialized()
         {
             _ins = this;
+
+            LoadData();
             
             permission.RegisterPermission(PermissionUse, this);
             permission.RegisterPermission(PermissionAdmin, this);
         }
+
+        private void Unload() => SaveData();
+
+        private void OnServerSave() => SaveData();
 
         private void OnPlayerInit(BasePlayer player)
         {
@@ -93,7 +126,13 @@ namespace Oxide.Plugins
             var canUse = player.IsAdmin && _holders.IsAKeyMaster(player.userID.ToString())
                           || iPlayer.HasPermission(MasterPerm) && _holders.IsAKeyMaster(player.userID.ToString())
                           || new DoorAuthorizer(door, player).CanOpen();
+            
             return canUse;
+        }
+        
+        private object OnCodeEntered(CodeLock codeLock, BasePlayer player, string code)
+        {
+            return null;
         }
         
         #endregion
@@ -147,169 +186,14 @@ namespace Oxide.Plugins
         
         #region Helpers
 
-        private class PlayerResponder
-        {
-            private const string Prefix = "<color=#00ffffff>[</color><color=#ff0000ff>SharedDoors</color><color=#00ffffff>]</color>";
+        private string GetMsg(string key, string userId = null) => lang.GetMessage(key, this, userId);
 
-            public static void NotifyUser(IPlayer player, string message)
-            {
-                player.Message(Prefix + " " + message);
-            }
+        private PlayerData GetPlayerData(ulong id)
+        {
+            PlayerData data;
+            return _data.TryGetValue(id, out data) ? data : null;
         }
 
-        private class DoorAuthorizer
-        {
-            public BaseLock BaseDoor { get; protected set; }
-            public BasePlayer Player { get; protected set; }
-            private ToolCupboardChecker _checker;
-            private RustIoHandler _handler;
-
-            public DoorAuthorizer(BaseLock door, BasePlayer player)
-            {
-                BaseDoor = door;
-                Player = player;
-                _checker = new ToolCupboardChecker(Player);
-                _handler = new RustIoHandler(this);
-            }
-
-            public bool CanOpen()
-            {
-                var canUse = false;
-                if (BaseDoor.IsLocked())
-                {
-                    if (BaseDoor is CodeLock)
-                    {
-                        var codeLock = (CodeLock)BaseDoor;
-                        canUse = CanOpenCodeLock(codeLock, Player);
-                    }
-                    else if (BaseDoor is KeyLock)
-                    {
-                        var keyLock = (KeyLock)BaseDoor;
-                        canUse = CanOpenKeyLock(keyLock, Player);
-                    }
-                }
-                else
-                {
-                    canUse = true;
-                }
-                return canUse;
-            }
-
-            private bool CanOpenCodeLock(CodeLock door, BasePlayer player)
-            {
-                var canUse = false;
-                var whitelist = door.whitelistPlayers;
-                canUse = whitelist.Contains(player.userID);
-
-                if (!canUse)
-                {
-                    canUse = player.CanBuild() && _checker.IsPlayerAuthorized();
-                    if (canUse && _handler.ClansAvailable())
-                    {
-                        canUse = _handler.IsInClan(player);
-                    }
-                }
-
-                PlaySound(canUse, door, player);
-                return canUse;
-            }
-
-            private bool CanOpenKeyLock(KeyLock door, BasePlayer player)
-            {
-                var canUse = door.HasLockPermission(player) || player.CanBuild() && _checker.IsPlayerAuthorized();
-
-                return canUse;
-            }
-
-            private void PlaySound(bool canUse, CodeLock door, BasePlayer player)
-            {
-                Effect.server.Run(canUse ? door.effectUnlocked.resourcePath : door.effectDenied.resourcePath,
-                    player.transform.position, Vector3.zero);
-            }
-        }
-
-        private class ToolCupboardChecker
-        {
-            public BasePlayer Player { get; protected set; }
-
-            public ToolCupboardChecker(BasePlayer player)
-            {
-                Player = player;
-            }
-
-            public bool IsPlayerAuthorized()
-            {
-                return Player.IsBuildingAuthed();
-            }
-        }
-
-        private class MasterKeyHolders
-        {
-            private Dictionary<string, PlayerSettings> _keyMasters;
-
-            public MasterKeyHolders()
-            {
-                _keyMasters = new Dictionary<string, PlayerSettings>();
-            }
-
-            public void AddMaster(string id)
-            {
-                _keyMasters.Add(id, new PlayerSettings(false));
-            }
-
-            public void RemoveMaster(string id)
-            {
-                _keyMasters.Remove(id);
-            }
-
-            public void GiveMasterKey(string id)
-            {
-                PlayerSettings settings;
-                var exists = _keyMasters.TryGetValue(id, out settings);
-                if (exists)
-                {
-                    settings.IsMasterKeyHolder = true;
-                }
-            }
-
-            public void RemoveMasterKey(string id)
-            {
-                PlayerSettings settings;
-                var exists = _keyMasters.TryGetValue(id, out settings);
-                if (exists)
-                {
-                    settings.IsMasterKeyHolder = false;
-                }
-            }
-
-            public bool IsAKeyMaster(string id)
-            {
-                var isKeyMaster = false;
-                PlayerSettings settings;
-                var exists = _keyMasters.TryGetValue(id, out settings);
-                if (exists)
-                {
-                    isKeyMaster = settings.IsMasterKeyHolder;
-                }
-                return isKeyMaster;
-            }
-
-            public void ToggleMasterMode(string id)
-            {
-                PlayerSettings settings;
-                var exists = _keyMasters.TryGetValue(id, out settings);
-                if (exists)
-                {
-                    settings.ToggleMasterMode();
-                }
-            }
-
-            public bool HasMaster(string id)
-            {
-                return _keyMasters.ContainsKey(id);
-            }
-        }
-        
         #endregion
     }
 }
