@@ -7,7 +7,7 @@ using Random = System.Random;
 
 namespace Oxide.Plugins
 {
-    [Info("Power Spawn", "Iv Misticos", "1.0.1")]
+    [Info("Power Spawn", "Iv Misticos", "1.0.2")]
     [Description("Control players' spawning")]
     class PowerSpawn : RustPlugin
     {
