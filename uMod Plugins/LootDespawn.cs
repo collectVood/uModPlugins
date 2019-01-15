@@ -4,9 +4,9 @@ using Oxide.Core;
 
 namespace Oxide.Plugins
 {
-    [Info("AntiLootDespawn", "Iv Misticos", "2.0.0")]
+    [Info("LootDespawn", "Iv Misticos", "2.0.1")]
     [Description("Change loot despawn time in cupboard radius")]
-    public class AntiLootDespawn : RustPlugin
+    public class LootDespawn : RustPlugin
     {
         #region Configuration
         

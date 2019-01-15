@@ -1,8 +1,8 @@
-﻿using System.Collections.Generic;
-using Newtonsoft.Json.Linq;
+﻿using System;
+using System.Collections.Generic;
+using Newtonsoft.Json;
 using Oxide.Core;
 using Oxide.Core.Libraries.Covalence;
-using Oxide.Core.Plugins;
 using UnityEngine;
 
 namespace Oxide.Plugins
@@ -12,18 +12,52 @@ namespace Oxide.Plugins
     public class SharedAuth : CovalencePlugin
     {
         #region Variables
-        
-        [PluginReference]
-        // ReSharper disable once InconsistentNaming
-        private Plugin Clans;
 
-        private static SharedAuth _instance;
-        private const string RustIo = "clans";
-        private const string ClansName = "Clans";
-        private const string RustClansHook = "SharedDoors now hooking to Rust:IO Clans";
-        private const string RustClansNotFound = "Rust Clans has not been found.";
-        private const string MasterPerm = "shareddoors.master";
-        private MasterKeyHolders _holders;
+        private const string PermissionUse = "sharedauth.use";
+        private const string PermissionAdmin = "sharedauth.admin";
+
+        private static SharedAuth _ins;
+        
+        #endregion
+        
+        #region Configuration
+        
+        private static Configuration _config = new Configuration();
+
+        private class Configuration
+        {
+            [JsonProperty(PropertyName = "Use Permission")]
+            public bool UsePermission = true;
+        }
+
+        protected override void LoadConfig()
+        {
+            base.LoadConfig();
+            try
+            {
+                _config = Config.ReadObject<Configuration>();
+                if (_config == null) throw new Exception();
+            }
+            catch
+            {
+                Config.WriteObject(_config, false, $"{Interface.Oxide.ConfigDirectory}/{Name}.jsonError");
+                PrintError("The configuration file contains an error and has been replaced with a default config.\n" +
+                           "The error configuration file was saved in the .jsonError extension");
+                LoadDefaultConfig();
+            }
+
+            SaveConfig();
+        }
+
+        protected override void LoadDefaultConfig() => _config = new Configuration();
+
+        protected override void SaveConfig() => Config.WriteObject(_config);
+        
+        #endregion
+        
+        #region Data
+        
+        
         
         #endregion
         
@@ -31,44 +65,14 @@ namespace Oxide.Plugins
 
         private void OnServerInitialized()
         {
-            _instance = this;
-            permission.RegisterPermission(MasterPerm, this);
-            if (Clans == null)
-            {
-                Puts(RustClansNotFound);
-            }
-            else
-            {
-                Puts(RustClansHook);
-            }
-        }
-
-        private void Unload()
-        {
-            _instance = null;
-        }
-
-        private void OnPluginLoaded(Plugin plugin)
-        {
-            if (plugin.Name == ClansName)
-            {
-                Puts(RustClansHook);
-                Clans = plugin;
-            }
-        }
-
-        private void OnPluginUnloaded(Plugin name)
-        {
-            if (name.Name == ClansName)
-            {
-                Puts(RustClansHook);
-                Clans = null;
-            }
+            _ins = this;
+            
+            permission.RegisterPermission(PermissionUse, this);
+            permission.RegisterPermission(PermissionAdmin, this);
         }
 
         private void OnPlayerInit(BasePlayer player)
         {
-            var iPlayer = covalence.Players.FindPlayerById(player.userID.ToString());
             if (player.IsAdmin || iPlayer.HasPermission(MasterPerm))
             {
                 _holders.AddMaster(player.userID.ToString());
@@ -77,7 +81,6 @@ namespace Oxide.Plugins
 
         private void OnPlayerDisconnected(BasePlayer player, string reason)
         {
-            var iPlayer = covalence.Players.FindPlayerById(player.userID.ToString());
             if (player.IsAdmin || iPlayer.HasPermission(MasterPerm))
             {
                 _holders.RemoveMaster(player.userID.ToString());
@@ -240,63 +243,6 @@ namespace Oxide.Plugins
             }
         }
 
-        private class RustIoHandler
-        {
-            private const string GetClanOfPlayer = "GetClanOf";
-            private const string GetClan = "GetClan";
-            private const string Members = "members";
-            public Plugin Clans { get; protected set; }
-            public ulong OriginalPlayerID { get; protected set; }
-            public DoorAuthorizer Door { get; protected set; }
-
-            public RustIoHandler(DoorAuthorizer door)
-            {
-                if (door.BaseDoor is CodeLock)
-                {
-                    var codeLock = door.BaseDoor as CodeLock;
-                    var whitelist = codeLock.whitelistPlayers;
-                    if (whitelist.Count > 0)
-                    {
-                        OriginalPlayerID = whitelist[0];
-                    }
-                    else
-                    {
-                        OriginalPlayerID = 0;
-                    }
-                }
-                Door = door;
-                Clans = _instance.Clans;
-            }
-
-            public bool IsInClan(BasePlayer player)
-            {
-                var isInClan = false;
-                if (ClansAvailable())
-                {
-                    var obj = Clans.CallHook(GetClanOfPlayer, OriginalPlayerID);
-                    if (obj != null)
-                    {
-                        var clanName = obj.ToString();
-                        var clan = Clans.CallHook(GetClan, clanName);
-                        if (clan != null)
-                        {
-                            var jObject = JObject.FromObject(clan);
-                            var members = (JArray)jObject.GetValue(Members);
-                            var memberIds = members.ToObject<string[]>();
-                            isInClan = memberIds.Contains(player.userID.ToString());
-                        }
-                    }
-                }
-
-                return isInClan;
-            }
-
-            public bool ClansAvailable()
-            {
-                return Clans != null;
-            }
-        }
-
         private class MasterKeyHolders
         {
             private Dictionary<string, PlayerSettings> _keyMasters;
@@ -361,21 +307,6 @@ namespace Oxide.Plugins
             public bool HasMaster(string id)
             {
                 return _keyMasters.ContainsKey(id);
-            }
-        }
-
-        private class PlayerSettings
-        {
-            public bool IsMasterKeyHolder { get; set; }
-
-            public PlayerSettings(bool isMasterKeyHolder)
-            {
-                IsMasterKeyHolder = isMasterKeyHolder;
-            }
-
-            public void ToggleMasterMode()
-            {
-                IsMasterKeyHolder = !IsMasterKeyHolder;
             }
         }
         
