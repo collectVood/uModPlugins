@@ -2,8 +2,6 @@
 using System.Collections.Generic;
 using Newtonsoft.Json;
 using Oxide.Core;
-using Oxide.Core.Libraries.Covalence;
-using UnityEngine;
 
 namespace Oxide.Plugins
 {
@@ -13,7 +11,7 @@ namespace Oxide.Plugins
     {
         #region Variables
         
-        private Dictionary<ulong, PlayerData> _data = new Dictionary<ulong, PlayerData>();
+        private List<PlayerData> _data = new List<PlayerData>();
 
         private const string PermissionUse = "sharedauth.use";
         private const string PermissionAdmin = "sharedauth.admin";
@@ -68,22 +66,49 @@ namespace Oxide.Plugins
         {
             try
             {
-                _data = Interface.Oxide.DataFileSystem.ReadObject<Dictionary<ulong, PlayerData>>(Name);
+                _data = Interface.Oxide.DataFileSystem.ReadObject<List<PlayerData>>(Name);
             }
             catch (Exception e)
             {
                 PrintError(e.ToString());
             }
 
-            if (_data == null) _data = new Dictionary<ulong, PlayerData>();
+            if (_data == null) _data = new List<PlayerData>();
         }
 
         private class PlayerData
         {
-            public bool Enabled = false;
+            private BasePlayer GetPlayer() => BasePlayer.FindByID(ID) ?? BasePlayer.FindSleeping(ID);
+
+            private RelationshipManager.PlayerTeam GetTeam()
+            {
+                foreach (var kvp in RelationshipManager.Instance.playerTeams)
+                {
+                    if (kvp.Value.members.Contains(ID))
+                        return kvp.Value;
+                }
+
+                return null;
+            }
+            
+            public ulong ID;
+            public bool Enabled = true;
 
             public bool AutoTeamAuth = false;
             public bool AllowTeamUse = true;
+
+            public bool IsAdmin()
+            {
+                var player = GetPlayer();
+                return _ins.permission.UserHasPermission(ID.ToString(), PermissionAdmin)
+                       || player == null || player.IsAdmin;
+            }
+
+            public bool IsTeamMember(ulong target)
+            {
+                var team = GetTeam();
+                return team != null && team.members.IndexOf(target) != -1;
+            }
         }
         
         #endregion
@@ -104,35 +129,22 @@ namespace Oxide.Plugins
 
         private void OnServerSave() => SaveData();
 
-        private void OnPlayerInit(BasePlayer player)
+        private object CanUseLockedEntity(BasePlayer player, BaseLock door)
         {
-            if (player.IsAdmin || iPlayer.HasPermission(MasterPerm))
-            {
-                _holders.AddMaster(player.userID.ToString());
-            }
-        }
+            var data = GetPlayerData(player.userID);
+            if (!data.Enabled)
+                return null;
 
-        private void OnPlayerDisconnected(BasePlayer player, string reason)
-        {
-            if (player.IsAdmin || iPlayer.HasPermission(MasterPerm))
-            {
-                _holders.RemoveMaster(player.userID.ToString());
-            }
-        }
-
-        private bool CanUseLockedEntity(BasePlayer player, BaseLock door)
-        {
-            var iPlayer = covalence.Players.FindPlayerById(player.userID.ToString());
-            var canUse = player.IsAdmin && _holders.IsAKeyMaster(player.userID.ToString())
-                          || iPlayer.HasPermission(MasterPerm) && _holders.IsAKeyMaster(player.userID.ToString())
-                          || new DoorAuthorizer(door, player).CanOpen();
-            
-            return canUse;
+            return data.IsAdmin() || data.AllowTeamUse && data.IsTeamMember(player.userID) ? (object) true : null;
         }
         
         private object OnCodeEntered(CodeLock codeLock, BasePlayer player, string code)
         {
-            return null;
+            var data = GetPlayerData(player.userID);
+            if (!data.Enabled)
+                return null;
+            
+            return data.IsAdmin() || data.AutoTeamAuth && data.IsTeamMember(player.userID) ? (object) true : null;
         }
         
         #endregion
@@ -190,8 +202,15 @@ namespace Oxide.Plugins
 
         private PlayerData GetPlayerData(ulong id)
         {
-            PlayerData data;
-            return _data.TryGetValue(id, out data) ? data : null;
+            for (var i = 0; i < _data.Count; i++)
+            {
+                if (_data[i].ID == id)
+                    return _data[i];
+            }
+
+            var data = new PlayerData {ID = id};
+            _data.Add(data);
+            return data;
         }
 
         #endregion
