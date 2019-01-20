@@ -2,12 +2,13 @@ using System;
 using System.Collections.Generic;
 using Newtonsoft.Json;
 using Oxide.Core;
+using Rust;
 using UnityEngine;
 using Random = System.Random;
 
 namespace Oxide.Plugins
 {
-    [Info("Power Spawn", "Iv Misticos", "1.0.2")]
+    [Info("Power Spawn", "Iv Misticos", "1.0.3")]
     [Description("Control players' spawning")]
     class PowerSpawn : RustPlugin
     {
@@ -15,9 +16,9 @@ namespace Oxide.Plugins
 
         private int _worldSize;
 
-        private Random _random = new Random();
+        private readonly int _layerTerrain = LayerMask.NameToLayer("Terrain");
 
-        private readonly int _worldLayer = LayerMask.GetMask("World", "Default");
+        private readonly Random _random = new Random();
         
         #endregion
         
@@ -30,8 +31,11 @@ namespace Oxide.Plugins
             [JsonProperty(PropertyName = "Minimal Distance To Building")]
             public int DistanceBuilding = 10;
 
-            [JsonProperty(PropertyName = "Minimal Distance To Trigger")]
-            public int DistanceTrigger = 10;
+            [JsonProperty(PropertyName = "Minimal Distance To Collider")]
+            public int DistanceCollider = 10;
+
+            [JsonProperty(PropertyName = "Maximum Number Of Attempts To Find A Location")]
+            public int AttemptsMax = 200;
 
             [JsonProperty(PropertyName = "Debug")]
             public bool Debug = false;
@@ -72,11 +76,17 @@ namespace Oxide.Plugins
         private object OnPlayerRespawn(BasePlayer player)
         {
             var position = FindPosition();
+            if (!position.HasValue)
+            {
+                PrintDebug($"Haven't found a position for {player.displayName}");
+                return null;
+            }
+            
             PrintDebug($"Found position for {player.displayName}: {position}");
             
             return new BasePlayer.SpawnPoint
             {
-                pos = position
+                pos = position.Value
             };
         }
 
@@ -84,15 +94,16 @@ namespace Oxide.Plugins
         
         #region Helpers
 
-        private Vector3 FindPosition()
+        private Vector3? FindPosition()
         {
-            Vector3? position;
-            do
+            for (var i = 0; i < _config.AttemptsMax; i++)
             {
-                position = TryFindPosition();
-            } while (position == null);
+                var position = TryFindPosition();
+                if (position.HasValue)
+                    return position;
+            }
 
-            return position.Value;
+            return null;
         }
 
         private Vector3? TryFindPosition()
@@ -104,7 +115,7 @@ namespace Oxide.Plugins
             else
                 return null;
 
-            return CheckBadBuilding(position) || CheckBadTrigger(position) ? (Vector3?) null : position;
+            return CheckBadBuilding(position) || CheckBadCollider(position) ? (Vector3?) null : position;
         }
 
         private int GetRandomPosition() => _random.Next(_worldSize / -2, _worldSize / 2);
@@ -118,15 +129,24 @@ namespace Oxide.Plugins
         private bool CheckBadBuilding(Vector3 position)
         {
             var buildings = new List<BuildingBlock>();
-            Vis.Entities(position, _config.DistanceBuilding, buildings, Rust.Layers.Construction);
+            Vis.Entities(position, _config.DistanceBuilding, buildings, Layers.Construction);
             return buildings.Count > 0;
         }
 
-        private bool CheckBadTrigger(Vector3 position)
+        private bool CheckBadCollider(Vector3 position)
         {
-            var triggers = new List<TriggerBase>();
-            Vis.Components(position, _config.DistanceTrigger, triggers, Rust.Layers.Trigger);
-            return triggers.Count > 0;
+            var colliders = new List<Collider>();
+            Vis.Components(position, _config.DistanceCollider, colliders);
+            foreach (var collider in colliders)
+            {
+                var gameObject = collider.gameObject;
+                if (gameObject.layer == _layerTerrain)
+                    continue;
+                
+                return true;
+            }
+            
+            return false;
         }
 
         #endregion
