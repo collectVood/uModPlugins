@@ -9,7 +9,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Game Menu", "Iv Misticos", "1.0.4")]
+    [Info("Game Menu", "Iv Misticos", "1.0.5")]
     [Description("Create your own GUI menu with buttons and title.")]
     class GameMenu : RustPlugin
     {
@@ -176,7 +176,7 @@ namespace Oxide.Plugins
                 var sum = 0f;
                 for (var i2 = 0; i2 < buttonsCount; i2++)
                 {
-                    sum += menu.Buttons[i].ButtonHeight;
+                    sum += menu.Buttons[i2].ButtonHeight;
                 }
                 
                 var maxWidth = 0f;
