@@ -7,7 +7,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Building Info", "Iv Misticos", "1.0.4")]
+    [Info("Building Info", "Iv Misticos", "1.0.5")]
     [Description("Scan buildings and get their owners")]
     class BuildingInfo : RustPlugin
     {
@@ -123,7 +123,7 @@ namespace Oxide.Plugins
         private void CommandChatOwner(BasePlayer player, string command, string[] args)
         {
             var id = player.UserIDString;
-            if (!permission.UserHasPermission(id, PermScan))
+            if (!permission.UserHasPermission(id, PermOwner))
             {
                 player.ChatMessage(GetMsg("No Permissions", id));
                 return;
@@ -136,21 +136,21 @@ namespace Oxide.Plugins
                 return;
             }
 
-            var owner = BasePlayer.FindByID(entity.OwnerID);
+            var owner = covalence.Players.FindPlayerById(entity.OwnerID.ToString());
             if (owner == null)
             {
                 player.ChatMessage(GetMsg("Cannot Find Owner", id));
                 return;
             }
 
-            if (permission.UserHasPermission(owner.UserIDString, PermBypass))
+            if (permission.UserHasPermission(owner.Id, PermBypass))
             {
                 player.ChatMessage(GetMsg("Owner Unavailable", id));
                 return;
             }
 
-            player.ChatMessage(GetMsg("Owner Info", id).Replace("{name}", owner.displayName)
-                .Replace("{id}", owner.UserIDString));
+            player.ChatMessage(GetMsg("Owner Info", id).Replace("{name}", owner.Name)
+                .Replace("{id}", owner.Id));
         }
 
         private void CommandChatAuthed(BasePlayer player, string command, string[] args)
