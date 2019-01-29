@@ -1,65 +1,74 @@
 using System;
 using System.Collections.Generic;
+using Newtonsoft.Json;
+using Oxide.Core;
 using Oxide.Game.Rust.Cui;
 using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("BuildingBlockGUI", "Iv Misticos", "2.0.0")]
+    [Info("Building Block GUI", "Iv Misticos", "2.0.0")]
     [Description("Displays GUI to player when he enters or leaves building block without need of Planner")]
     public class BuildingBlockGUI : RustPlugin
     {
-        #region Config
+        #region Variables
 
-        private List<ulong> _activeUI = new List<ulong>();
-        private bool _configChanged;
-        private float _configTimerSeconds;
-        private bool _configUseTimer;
-        private bool _configUseImage;
-        private string _configImageUrl;
-        private bool _configUseGameTips;
-        private string _configAnchorMin;
-        private string _configAnchorMax;
-        private string _configUIColor;
-        private string _configUITextColor;
+        private GameObject _controller;
 
-        private Timer _timer;
+        private static BuildingBlockGUI _ins;
+        
+        #endregion
+        
+        #region Configuration
 
-        protected override void LoadDefaultConfig()
+        private static Configuration _config;
+        
+        private class Configuration
         {
-            Config.Clear();
-            LoadVariables();
+            [JsonProperty(PropertyName = "Use Image")]
+            public bool UseImage = false;
+            
+            [JsonProperty(PropertyName = "Image URL")]
+            public string ImageURL = "";
+            
+            [JsonProperty(PropertyName = "Use GameTips")]
+            public bool UseGameTips = false;
+            
+            [JsonProperty(PropertyName = "Check Frequency")]
+            public float CheckFrequency = 0.75f;
+            
+            [JsonProperty(PropertyName = "Background Color")]
+            public string BackgroundColor = "1.0 0.0 0.0 0.15";
+            
+            [JsonProperty(PropertyName = "Anchor Min")]
+            public string AnchorMin = "0.35 0.11";
+            
+            [JsonProperty(PropertyName = "Anchor Max")]
+            public string AnchorMax = "0.63 0.14";
         }
 
-        private void LoadVariables()
+        protected override void LoadConfig()
         {
-            _configUseTimer = Convert.ToBoolean(GetConfig("useTimer", true));
-            _configUseImage = Convert.ToBoolean(GetConfig("useImage", false));
-            _configImageUrl = Convert.ToString(GetConfig("ImageURL", "http://oxidemod.org/data/resource_icons/2/2713.jpg?1512759786"));
-            _configUseGameTips = Convert.ToBoolean(GetConfig("UseGameTips", false));
-            _configTimerSeconds = Convert.ToSingle(GetConfig("timerSeconds", 0.5f));
-            _configAnchorMin = Convert.ToString(GetConfig("AnchorMin", "0.35 0.11"));
-            _configAnchorMax = Convert.ToString(GetConfig("AnchorMax", "0.63 0.14"));
-            _configUIColor = Convert.ToString(GetConfig("UIColor", "1 0 0 0.15"));
-            _configUITextColor = Convert.ToString(GetConfig("UITextColor", "1 1 1"));
-            if (_configChanged)
+            base.LoadConfig();
+            try
             {
-                SaveConfig();
-                _configChanged = false;
+                _config = Config.ReadObject<Configuration>();
+                if (_config == null) throw new Exception();
             }
+            catch
+            {
+                Config.WriteObject(_config, false, $"{Interface.Oxide.ConfigDirectory}/{Name}.jsonError");
+                PrintError("The configuration file contains an error and has been replaced with a default config.\n" +
+                           "The error configuration file was saved in the .jsonError extension");
+                LoadDefaultConfig();
+            }
+
+            SaveConfig();
         }
 
-        private object GetConfig(string dataValue, object defaultValue)
-        {
-            var value = Config[dataValue];
-            if (value == null)
-            {
-                value = defaultValue;
-                Config[dataValue] = value;
-                _configChanged = true;
-            }
-            return value;
-        }
+        protected override void LoadDefaultConfig() => _config = new Configuration();
+
+        protected override void SaveConfig() => Config.WriteObject(_config);
 
         #endregion
 
@@ -72,120 +81,134 @@ namespace Oxide.Plugins
                 {"text", "BUILDING BLOCKED" }
 
             }, this);
+            
             lang.RegisterMessages(new Dictionary<string, string>
             {
                 {"text", "СТРОИТЕЛЬСТВО ЗАПРЕЩЕНО" }
             }, this, "ru");
         }
 
-        private void Init()
-        {
-            LoadVariables();
-        }
-
         private void OnServerInitialized()
         {
-            if (_configUseTimer)
-            {
-                _timer = timer.Repeat(_configTimerSeconds, 0, PluginTimerTick);
-            }
+            _ins = this;
+            _controller = new GameObject();
+            _controller.AddComponent<BuildingController>();
         }
 
         private void Unload()
         {
-            _timer?.Destroy();
-            foreach (var player in BasePlayer.activePlayerList)
-            {
-                DestroyUI(player);
-            }
+            UnityEngine.Object.Destroy(_controller);
         }
 
         private void OnPlayerDisconnected(BasePlayer player)
         {
-            DestroyUI(player);
+            BuildingController.DestroyUI(player);
         }
 
-        #endregion
-
-        #region UI
-
-        private void DestroyUI(BasePlayer player)
-        {
-            if (!_activeUI.Contains(player.userID)) return;
-            if (_configUseGameTips) player.SendConsoleCommand("gametip.hidegametip");
-            else CuiHelper.DestroyUi(player, "BuildingBlockGUI");
-            _activeUI.Remove(player.userID);
-        }
-
-        private void CreateUI(BasePlayer player)
-        {
-            if (_activeUI.Contains(player.userID)) return;
-            if (_configUseGameTips)
-            {
-                player.SendConsoleCommand("gametip.hidegametip");
-                player.SendConsoleCommand("gametip.showgametip", GetMsg("text", player.UserIDString));
-                _activeUI.Add(player.userID);
-                return;
-            }
-            DestroyUI(player);
-            var container = new CuiElementContainer();
-            if (_configUseImage)
-            {
-                var panel = container.Add(new CuiPanel
-                {
-                    Image = { Color = _configUIColor },
-                    RectTransform = { AnchorMin = _configAnchorMin, AnchorMax = _configAnchorMax }
-                }, "Hud", "BuildingBlockGUI");
-                container.Add(new CuiElement
-                {
-                    Name = CuiHelper.GetGuid(),
-                    Parent = panel,
-                    Components =
-                    {
-                        new CuiRawImageComponent {
-                            Url = _configImageUrl,
-                            Sprite = "assets/content/textures/generic/fulltransparent.tga" },
-                        new CuiRectTransformComponent {AnchorMin = "0 0", AnchorMax = "1 1" }
-                    }
-                });
-            }
-            else
-            {
-                var panel = container.Add(new CuiPanel
-                {
-                    Image = { Color = _configUIColor },
-                    RectTransform = { AnchorMin = _configAnchorMin, AnchorMax = _configAnchorMax }
-                }, "Hud", "BuildingBlockGUI");
-                var element = new CuiElement
-                {
-                    Parent = panel,
-                    Components = {
-                        new CuiTextComponent { Text = GetMsg("text",player.UserIDString), FontSize = 15, Color = _configUITextColor, Align = TextAnchor.MiddleCenter },
-                        new CuiRectTransformComponent { AnchorMin = "0.0 0.0", AnchorMax = "1.0 1.0" }
-                    }
-                };
-                container.Add(element);
-            }
-
-            CuiHelper.AddUi(player, container);
-            _activeUI.Add(player.userID);
-        }
         #endregion
 
         #region Helpers
 
-        private void PluginTimerTick()
+        private class BuildingController : MonoBehaviour
         {
-            foreach (var player in BasePlayer.activePlayerList)
+            private static List<BasePlayer> _activeUI = new List<BasePlayer>();
+            
+            private void OnDestroy()
             {
-                if (player.IsBuildingBlocked())
-                    CreateUI(player);
+                for (var i = _activeUI.Count - 1; i >= 0; i--)
+                {
+                    DestroyUI(_activeUI[i]);
+                }
+            }
+
+            private void Awake()
+            {
+                InvokeRepeating(nameof(OnControllerTick), _config.CheckFrequency, _config.CheckFrequency);
+            }
+
+            private void OnControllerTick()
+            {
+                for (var i = 0; i < BasePlayer.activePlayerList.Count; i++)
+                {
+                    var player = BasePlayer.activePlayerList[i];
+                    if (player == null || player.IsNpc)
+                        continue;
+
+                    if (player.IsBuildingBlocked())
+                    {
+                        CreateUI(player);
+                    }
+                    else
+                    {
+                        DestroyUI(player);
+                    }
+                }
+            }
+
+            private static void CreateUI(BasePlayer player)
+            {
+                if (_activeUI.Contains(player))
+                    return;
+                
+                if (_config.UseGameTips)
+                {
+                    player.SendConsoleCommand("gametip.showgametip", GetMsg("text", player.UserIDString));
+                }
                 else
-                    DestroyUI(player);
+                {
+                    var container = new CuiElementContainer();
+                    var background = container.Add(new CuiPanel
+                    {
+                        Image = {Color = _config.BackgroundColor},
+                        RectTransform = {AnchorMin = _config.AnchorMin, AnchorMax = _config.AnchorMax}
+                    }, "Hud", "BuildingBlockGUI.Background");
+
+                    container.Add(_config.UseImage
+                        ? new CuiElement
+                        {
+                            Parent = background,
+                            Components =
+                            {
+                                new CuiRawImageComponent
+                                {
+                                    Url = _config.ImageURL,
+                                    Sprite = "assets/content/textures/generic/fulltransparent.tga"
+                                },
+                                new CuiRectTransformComponent {AnchorMin = "0 0", AnchorMax = "1 1"}
+                            }
+                        }
+                        : new CuiElement
+                        {
+                            Parent = background,
+                            Components =
+                            {
+                                new CuiTextComponent
+                                {
+                                    Text = GetMsg("text", player.UserIDString), FontSize = 15,
+                                    Align = TextAnchor.MiddleCenter
+                                },
+                                new CuiRectTransformComponent {AnchorMin = "0.0 0.0", AnchorMax = "1.0 1.0"}
+                            }
+                        });
+
+                    CuiHelper.AddUi(player, container);
+                }
+
+                _activeUI.Add(player);
+            }
+
+            public static void DestroyUI(BasePlayer player)
+            {
+                if (!_activeUI.Contains(player))
+                    return;
+
+                if (_config.UseGameTips) player.SendConsoleCommand("gametip.hidegametip");
+                else CuiHelper.DestroyUi(player, "BuildingBlockGUI.Background");
+                _activeUI.Remove(player);
             }
         }
         
-        private string GetMsg(string key, string userId = null) => lang.GetMessage(key, this, userId);
+        private static string GetMsg(string key, string userId = null) => _ins.lang.GetMessage(key, _ins, userId);
 
         #endregion
     }
