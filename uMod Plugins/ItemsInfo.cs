@@ -1,10 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Items Info", "Iv Misticos", "1.0.2")]
+    [Info("Items Info", "Iv Misticos", "1.0.3")]
     [Description("Get actual information about items.")]
     class ItemsInfo : RustPlugin
     {
@@ -16,7 +17,6 @@ namespace Oxide.Plugins
             }, this);
         }
 
-        // ReSharper disable once UnusedMember.Local
         private void Init()
         {
             cmd.AddConsoleCommand("itemsinfo.all", this, CommandConsoleHandle);
@@ -25,17 +25,17 @@ namespace Oxide.Plugins
 
         private bool CommandConsoleHandle(ConsoleSystem.Arg arg)
         {
-            if (!arg.IsRcon && !arg.IsConnectionAdmin)
+            if (!arg.IsAdmin)
                 return false;
             
-            arg.ReplyWith(GetItemsInfo(arg.Args, arg.cmd.FullName == "itemsinfo.find"));
+            arg.ReplyWith(GetItemsInfo(arg.Args, arg.cmd.FullName == "itemsinfo.find", arg.Player()?.UserIDString));
             return true;
         }
 
-        private string GetItemsInfo(string[] parameters, bool search)
+        private string GetItemsInfo(IReadOnlyList<string> parameters, bool search, string id)
         {
-            if (parameters == null || (search && parameters.Length < 2) || parameters.Length < 1)
-                return GetMsg("Incorrect Arguments");
+            if (parameters == null || (search && parameters.Count < 2) || parameters.Count < 1)
+                return GetMsg("Incorrect Arguments", id);
             
             var reply = new StringBuilder();
             var items = ItemManager.itemList;
@@ -48,7 +48,7 @@ namespace Oxide.Plugins
                 if (search && item.shortname.IndexOf(parameters[0], StringComparison.CurrentCultureIgnoreCase) == -1)
                     continue;
 
-                for (var j = search ? 1 : 0; j < parameters.Length; j++)
+                for (var j = search ? 1 : 0; j < parameters.Count; j++)
                 {
                     switch (parameters[j])
                     {
@@ -100,6 +100,6 @@ namespace Oxide.Plugins
             return reply.ToString();
         }
 
-        private string GetMsg(string key) => lang.GetMessage(key, this);
+        private string GetMsg(string key, string userId = null) => lang.GetMessage(key, this, userId);
     }
 }
