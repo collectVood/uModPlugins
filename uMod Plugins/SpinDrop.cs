@@ -5,7 +5,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Spin Drop", "Iv Misticos", "1.0.1")]
+    [Info("Spin Drop", "Iv Misticos", "1.0.2")]
     [Description("Spin around dropped items")]
     class SpinDrop : RustPlugin
     {
@@ -17,6 +17,9 @@ namespace Oxide.Plugins
         {
             [JsonProperty(PropertyName = "Speed Modifier")]
             public float SpeedModifier = 125f;
+            
+            [JsonProperty(PropertyName = "Move Item UP On N")]
+            public float HeightOnDrop = 0.4f;
         }
 
         protected override void LoadConfig()
@@ -61,11 +64,21 @@ namespace Oxide.Plugins
 
         public class SpinDropControl : MonoBehaviour
         {
+            private bool _triggered = false;
+            
             private void OnCollisionEnter(Collision other)
             {
+                if (_triggered)
+                    return;
+                
                 var rigidbody = gameObject.GetComponent<Rigidbody>();
                 rigidbody.useGravity = false;
                 rigidbody.isKinematic = true;
+
+                var t = transform;
+                var pos = t.position;
+                t.position = new Vector3(pos.x, pos.y + _config.HeightOnDrop, pos.z);
+                _triggered = true;
             }
 
             private void FixedUpdate()
