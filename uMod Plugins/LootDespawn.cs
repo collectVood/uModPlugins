@@ -1,11 +1,12 @@
 using System;
+using System.Collections.Generic;
 using Newtonsoft.Json;
 using Oxide.Core;
 
 namespace Oxide.Plugins
 {
-    [Info("LootDespawn", "Iv Misticos", "2.0.1")]
-    [Description("Change loot despawn time in cupboard radius")]
+    [Info("Loot Despawn", "Iv Misticos", "2.0.1")]
+    [Description("Customize loot despawn")]
     public class LootDespawn : RustPlugin
     {
         #region Configuration
@@ -22,6 +23,12 @@ namespace Oxide.Plugins
             
             [JsonProperty(PropertyName = "Multiplier Outside Building Privilege")]
             public float MultiplierNonCupboard = 0.5f;
+            
+            [JsonProperty(PropertyName = "Items' Multipliers", ObjectCreationHandling = ObjectCreationHandling.Replace)]
+            public Dictionary<string, float> MultiplierItems = new Dictionary<string, float>
+            {
+                { "item.shortname", 1.0f }
+            };
         }
 
         protected override void LoadConfig()
@@ -51,19 +58,32 @@ namespace Oxide.Plugins
         
         #region Hooks
 
-        private void OnItemDropped(Item item, BaseEntity entity) => SetDespawnTime(entity as DroppedItem);
+        private void OnItemDropped(Item item, BaseEntity entity) => SetDespawnTime(item, entity as DroppedItem);
         
         #endregion
 
         #region Helpers
         
-        private void SetDespawnTime(DroppedItem item)
+        private void SetDespawnTime(Item item, DroppedItem droppedItem)
         {
-            if (!_config.Enabled || item == null)
+            if (!_config.Enabled || droppedItem == null)
                 return;
             
-            item.CancelInvoke(nameof(DroppedItem.IdleDestroy));
-            item.Invoke(nameof(DroppedItem.IdleDestroy), item.GetDespawnDuration() * (item.GetBuildingPrivilege() == null ? _config.MultiplierNonCupboard : _config.MultiplierCupboard));
+            droppedItem.CancelInvoke(nameof(DroppedItem.IdleDestroy));
+            droppedItem.Invoke(nameof(DroppedItem.IdleDestroy), GetItemRate(item, droppedItem));
+        }
+
+        private float GetItemRate(Item item, DroppedItem droppedItem)
+        {
+            float current;
+            if (!_config.MultiplierItems.TryGetValue(item.info.shortname, out current))
+                current = 1.0f;
+
+            current *= droppedItem.GetDespawnDuration() * (droppedItem.GetBuildingPrivilege() == null
+                           ? _config.MultiplierNonCupboard
+                           : _config.MultiplierCupboard);
+
+            return current;
         }
         
         #endregion
