@@ -5,7 +5,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Spin Drop", "Iv Misticos", "1.0.2")]
+    [Info("Spin Drop", "Iv Misticos", "1.0.4")]
     [Description("Spin around dropped items")]
     class SpinDrop : RustPlugin
     {
@@ -66,9 +66,9 @@ namespace Oxide.Plugins
         {
             private bool _triggered = false;
             
-            private void OnCollisionEnter(Collision other)
+            private void OnCollisionEnter(Collision collision)
             {
-                if (_triggered)
+                if (_triggered || collision.gameObject.ToBaseEntity()?.GetItem() != null)
                     return;
                 
                 var rigidbody = gameObject.GetComponent<Rigidbody>();
@@ -77,6 +77,7 @@ namespace Oxide.Plugins
 
                 var t = transform;
                 var pos = t.position;
+                t.rotation = Quaternion.Euler(0, 0, 0);
                 t.position = new Vector3(pos.x, pos.y + _config.HeightOnDrop, pos.z);
                 _triggered = true;
             }
