@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Newtonsoft.Json;
 using Oxide.Core;
+using Oxide.Core.Libraries;
 
 namespace Oxide.Plugins
 {
@@ -11,13 +12,17 @@ namespace Oxide.Plugins
     {
         #region Variables
 
+        private static CashSystem _ins;
+
         private static PluginData _data;
+
+        private static Time _time = GetLibrary<Time>();
         
         #endregion
         
         #region Configuration
         
-        private Configuration _config = new Configuration();
+        private static Configuration _config = new Configuration();
 
         public class Configuration
         {
@@ -26,6 +31,12 @@ namespace Oxide.Plugins
             {
                 new Currency()
             };
+
+            [JsonProperty(PropertyName = "Purge Old Data", ObjectCreationHandling = ObjectCreationHandling.Replace)]
+            public bool Purge = true;
+
+            [JsonProperty(PropertyName = "Time Between Latest Update And Purge", ObjectCreationHandling = ObjectCreationHandling.Replace)]
+            public uint PurgeTime = 604800;
         }
 
         public class Currency
@@ -89,7 +100,10 @@ namespace Oxide.Plugins
         private class PlayerData
         {
             [JsonProperty(PropertyName = "SteamID")]
-            public ulong Id = 0;
+            public ulong Id;
+            
+            [JsonProperty(PropertyName = "Last Update")]
+            public uint LastUpdate = _time.GetUnixTimestamp();
             
             [JsonProperty(ObjectCreationHandling = ObjectCreationHandling.Replace)]
             public List<CurrencyData> Currencies = new List<CurrencyData>();
@@ -117,15 +131,39 @@ namespace Oxide.Plugins
 
                 return null;
             }
+
+            public void UpdateCurrencies()
+            {
+                for (var i = 0; i < _config.Currencies.Count; i++)
+                {
+                    var currency = _config.Currencies[i];
+                    var foundCurrency = FindCurrency(currency.Abbreviation);
+                    if (foundCurrency == null)
+                    {
+                        foundCurrency = new CurrencyData
+                        {
+                            Abbreviation = currency.Abbreviation
+                        };
+
+                        foundCurrency.Add(currency.StartAmount, GetMsg("Start Amount Transfer", Id.ToString()));
+                        Currencies.Add(foundCurrency);
+                    }
+                
+                    foundCurrency.RecalculateBalance();
+                }
+            }
+
+            public void Update()
+            {
+                LastUpdate = _time.GetUnixTimestamp();
+            }
         }
 
         private class CurrencyData
         {
             public string Abbreviation = "$";
 
-            [JsonIgnore] public Currency Currency = null;
-
-            [JsonIgnore] public float Balance = 0f;
+            [JsonIgnore] public float Balance;
             
             [JsonProperty(ObjectCreationHandling = ObjectCreationHandling.Replace)]
             public List<TransactionData> Transactions = new List<TransactionData>();
@@ -141,11 +179,20 @@ namespace Oxide.Plugins
                 Transactions.Add(transaction);
                 Balance += amount;
             }
+
+            public void RecalculateBalance()
+            {
+                Balance = 0f;
+                for (var i = 0; i < Transactions.Count; i++)
+                {
+                    Balance += Transactions[i].Amount;
+                }
+            }
         }
 
         private class TransactionData
         {
-            public float Amount = 0f;
+            public float Amount;
 
             public string Description = string.Empty;
         }
@@ -154,20 +201,47 @@ namespace Oxide.Plugins
         
         #region Hooks
 
+        protected override void LoadDefaultMessages()
+        {
+            lang.RegisterMessages(new Dictionary<string, string>
+            {
+                { "Start Amount Transfer", "Start Amount" }
+            }, this);
+        }
+
         private void Loaded()
         {
-            for (var i = 0; i < _data.Players.Count; i++)
+            _ins = this;
+
+            var currentTime = _time.GetUnixTimestamp();
+            for (var i = _data.Players.Count - 1; i >= 0; i++)
             {
-                var player = _data.Players[i];
-                for (var j = 0; j < player.Currencies.Count; j++)
+                var data = _data.Players[i];
+                if (data.LastUpdate + _config.PurgeTime < currentTime)
                 {
-                    var currency = player.Currencies[j];
-                    for (var k = 0; k < currency.Transactions.Count; k++)
-                    {
-                        currency.Balance += currency.Transactions[i].Amount;
-                    }
+                    _data.Players.RemoveAt(i);
+                    continue;
                 }
+                
+                data.UpdateCurrencies();
             }
+        }
+
+        private void OnPlayerInit(BasePlayer player)
+        {
+            var data = PlayerData.Find(player.userID);
+            if (data == null)
+            {
+                data = new PlayerData
+                {
+                    Id = player.userID
+                };
+                
+                _data.Players.Add(data);
+            }
+            
+            data.UpdateCurrencies();
+            data.Update();
         }
         
         #endregion
@@ -204,9 +278,16 @@ namespace Oxide.Plugins
                 return false;
             
             data.Add(amount, description);
+            player.Update();
             return true;
         }
         
+        #endregion
+        
+        #region Helpers
+
+        private static string GetMsg(string key, string userId = null) => _ins.lang.GetMessage(key, _ins, userId);
+
         #endregion
     }
 }
