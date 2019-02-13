@@ -33,10 +33,10 @@ namespace Oxide.Plugins
                 new Currency()
             };
 
-            [JsonProperty(PropertyName = "Purge Old Data", ObjectCreationHandling = ObjectCreationHandling.Replace)]
+            [JsonProperty(PropertyName = "Purge Old Data")]
             public bool Purge = true;
 
-            [JsonProperty(PropertyName = "Time Between Latest Update And Purge", ObjectCreationHandling = ObjectCreationHandling.Replace)]
+            [JsonProperty(PropertyName = "Time Between Latest Update And Purge")]
             public uint PurgeTime = 604800;
         }
 
