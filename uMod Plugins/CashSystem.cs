@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using Oxide.Core;
 using Oxide.Core.Libraries;
 
@@ -24,7 +25,7 @@ namespace Oxide.Plugins
         
         private static Configuration _config = new Configuration();
 
-        public class Configuration
+        private class Configuration
         {
             [JsonProperty(PropertyName = "Currency List", ObjectCreationHandling = ObjectCreationHandling.Replace)]
             public List<Currency> Currencies = new List<Currency>
@@ -39,7 +40,7 @@ namespace Oxide.Plugins
             public uint PurgeTime = 604800;
         }
 
-        public class Currency
+        private class Currency
         {
             [JsonProperty(PropertyName = "Abbreviation")]
             public string Abbreviation = "$";
@@ -194,6 +195,7 @@ namespace Oxide.Plugins
         {
             public float Amount;
 
+            // ReSharper disable once NotAccessedField.Local
             public string Description = string.Empty;
         }
 
@@ -213,19 +215,30 @@ namespace Oxide.Plugins
         {
             _ins = this;
 
-            var currentTime = _time.GetUnixTimestamp();
-            for (var i = _data.Players.Count - 1; i >= 0; i++)
+            LoadData();
+
+            if (_config.Purge)
             {
-                var data = _data.Players[i];
-                if (data.LastUpdate + _config.PurgeTime < currentTime)
+                var currentTime = _time.GetUnixTimestamp();
+                for (var i = _data.Players.Count - 1; i >= 0; i++)
                 {
-                    _data.Players.RemoveAt(i);
-                    continue;
+                    var data = _data.Players[i];
+                    if (data.LastUpdate + _config.PurgeTime < currentTime)
+                    {
+                        _data.Players.RemoveAt(i);
+                        continue;
+                    }
+
+                    data.UpdateCurrencies();
                 }
-                
-                data.UpdateCurrencies();
             }
+            
+            SaveData();
         }
+
+        private void OnServerSave() => SaveData();
+
+        private void Unload() => SaveData();
 
         private void OnPlayerInit(BasePlayer player)
         {
@@ -263,6 +276,17 @@ namespace Oxide.Plugins
             return data;
         }
 
+        private List<string> API_GetCurrencies()
+        {
+            var data = new List<string>();
+            for (var i = 0; i < _config.Currencies.Count; i++)
+            {
+                data.Add(_config.Currencies[i].Abbreviation);
+            }
+
+            return data;
+        }
+
         private float API_GetBalance(ulong id, string currency)
         {
             var player = PlayerData.Find(id);
@@ -280,6 +304,13 @@ namespace Oxide.Plugins
             data.Add(amount, description);
             player.Update();
             return true;
+        }
+
+        private JObject API_GetTransactions(ulong id, string currency)
+        {
+            var player = PlayerData.Find(id);
+            var data = player?.FindCurrency(currency);
+            return data == null ? null : JObject.FromObject(data.Transactions);
         }
         
         #endregion
