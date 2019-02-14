@@ -46,7 +46,7 @@ namespace Oxide.Plugins
             public string Abbreviation = "$";
             
             [JsonProperty(PropertyName = "Start Amount")]
-            public float StartAmount = 0f;
+            public double StartAmount = 0f;
         }
 
         protected override void LoadConfig()
@@ -164,12 +164,12 @@ namespace Oxide.Plugins
         {
             public string Abbreviation = "$";
 
-            [JsonIgnore] public float Balance;
+            [JsonIgnore] public double Balance;
             
             [JsonProperty(ObjectCreationHandling = ObjectCreationHandling.Replace)]
             public List<TransactionData> Transactions = new List<TransactionData>();
 
-            public void Add(float amount, string description)
+            public void Add(double amount, string description)
             {
                 var transaction = new TransactionData
                 {
@@ -183,7 +183,7 @@ namespace Oxide.Plugins
 
             public void RecalculateBalance()
             {
-                Balance = 0f;
+                Balance = 0d;
                 for (var i = 0; i < Transactions.Count; i++)
                 {
                     Balance += Transactions[i].Amount;
@@ -193,10 +193,12 @@ namespace Oxide.Plugins
 
         private class TransactionData
         {
-            public float Amount;
+            public double Amount;
 
             // ReSharper disable once NotAccessedField.Local
             public string Description = string.Empty;
+
+            public uint Timestamp = _time.GetUnixTimestamp();
         }
 
         #endregion
@@ -287,14 +289,14 @@ namespace Oxide.Plugins
             return data;
         }
 
-        private float API_GetBalance(ulong id, string currency)
+        private double API_GetBalance(ulong id, string currency)
         {
             var player = PlayerData.Find(id);
             var data = player?.FindCurrency(currency);
-            return data?.Balance ?? float.NaN; // Yeah it could be just a one line but I made it bigger for u
+            return data?.Balance ?? double.NaN; // Yeah it could be just a one line but I made it bigger for u
         }
 
-        private bool API_AddTransaction(ulong id, string currency, float amount, string description)
+        private bool API_AddTransaction(ulong id, string currency, double amount, string description)
         {
             var player = PlayerData.Find(id);
             var data = player?.FindCurrency(currency);
