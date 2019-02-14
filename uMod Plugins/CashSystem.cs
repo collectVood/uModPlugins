@@ -7,7 +7,7 @@ using Oxide.Core.Libraries;
 
 namespace Oxide.Plugins
 {
-    [Info("Cash System", "Iv Misticos", "1.0.0")]
+    [Info("Cash System", "Iv Misticos", "1.0.1")]
     [Description("Rich economics system")]
     class CashSystem : RustPlugin
     {
