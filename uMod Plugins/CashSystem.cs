@@ -7,9 +7,9 @@ using Oxide.Core.Libraries;
 
 namespace Oxide.Plugins
 {
-    [Info("Cash System", "Iv Misticos", "1.0.1")]
+    [Info("Cash System", "Iv Misticos", "1.0.2")]
     [Description("Rich economics system")]
-    class CashSystem : RustPlugin
+    class CashSystem : CovalencePlugin
     {
         #region Variables
 
@@ -101,7 +101,7 @@ namespace Oxide.Plugins
         private class PlayerData
         {
             [JsonProperty(PropertyName = "SteamID")]
-            public ulong Id;
+            public string Id;
             
             [JsonProperty(PropertyName = "Last Update")]
             public uint LastUpdate = _time.GetUnixTimestamp();
@@ -109,7 +109,7 @@ namespace Oxide.Plugins
             [JsonProperty(ObjectCreationHandling = ObjectCreationHandling.Replace)]
             public List<CurrencyData> Currencies = new List<CurrencyData>();
 
-            public static PlayerData Find(ulong id)
+            public static PlayerData Find(string id)
             {
                 for (var i = 0; i < _data.Players.Count; i++)
                 {
@@ -146,7 +146,7 @@ namespace Oxide.Plugins
                             Abbreviation = currency.Abbreviation
                         };
 
-                        foundCurrency.Add(currency.StartAmount, GetMsg("Start Amount Transfer", Id.ToString()));
+                        foundCurrency.Add(currency.StartAmount, GetMsg("Start Amount Transfer", Id));
                         Currencies.Add(foundCurrency);
                     }
                 
@@ -209,13 +209,25 @@ namespace Oxide.Plugins
         {
             lang.RegisterMessages(new Dictionary<string, string>
             {
-                { "Start Amount Transfer", "Start Amount" }
+                { "Start Amount Transfer", "Start Amount" },
+//                { "Not Enough Permissions", "You don't have enough permissions" },
+//                { "Admin Money Transfer", "Admin money transfer" },
+//                { "Incorrect Number", "Incorrect number" },
+//                { "Balance Get Error", "There was an error while getting this player's balance. Check his ID and the currency twice." },
+//                { "Balance Get", "Balance: {balance}" },
+//                { "Balance Add Success", "Success. Balance changed!" },
+//                { "Balance Add Error", "There was an error." },
+//                { "Balance Help", "Help:\n" +
+//                                  "get ID Currency - Get player balance\n" +
+//                                  "add ID Currency Amount - Add balance" },
             }, this);
         }
 
         private void Loaded()
         {
             _ins = this;
+            
+            // Loading, purging, saving
 
             LoadData();
 
@@ -244,12 +256,12 @@ namespace Oxide.Plugins
 
         private void OnPlayerInit(BasePlayer player)
         {
-            var data = PlayerData.Find(player.userID);
+            var data = PlayerData.Find(player.UserIDString);
             if (data == null)
             {
                 data = new PlayerData
                 {
-                    Id = player.userID
+                    Id = player.UserIDString
                 };
                 
                 _data.Players.Add(data);
@@ -261,9 +273,71 @@ namespace Oxide.Plugins
         
         #endregion
         
+//        #region Commands
+//
+//        [Command("balance")]
+//        private void CommandBalance(IPlayer player, string command, string[] args)
+//        {
+//            if (!player.IsAdmin)
+//            {
+//                player.Reply(GetMsg("Not Enough Permissions", player.Id));
+//                return;
+//            }
+//
+//            if (args.Length <= 2)
+//            {
+//                player.Reply(GetMsg("Balance Help", player.Id));
+//                return;
+//            }
+//
+//            switch (args[0])
+//            {
+//                case "get":
+//                {
+//                    var balance = GetBalance(args[1], args[2]);
+//                    if (double.IsNaN(balance))
+//                    {
+//                        player.Reply(GetMsg("Balance Get Error", player.Id));
+//                        return;
+//                    }
+//                    
+//                    player.Reply(GetMsg("Balance Get", player.Id).Replace("{balance}", balance.ToString(CultureInfo.CurrentCulture)));
+//                    break;
+//                }
+//
+//                case "add":
+//                {
+//                    if (args.Length <= 3)
+//                    {
+//                        player.Reply(GetMsg("Balance Help", player.Id));
+//                        return;
+//                    }
+//
+//                    double amount;
+//                    if (!double.TryParse(args[3], out amount))
+//                    {
+//                        player.Reply(GetMsg("Incorrect Number", player.Id));
+//                        return;
+//                    }
+//
+//                    var success = AddTransaction(args[1], args[2], amount, GetMsg("Admin Money Transfer", args[1]));
+//                    if (success)
+//                    {
+//                        player.Reply(GetMsg("Balance Add Success", player.Id));
+//                        return;
+//                    }
+//
+//                    player.Reply(GetMsg("Balance Add Error", player.Id));
+//                    break;
+//                }
+//            }
+//        }
+//        
+//        #endregion
+        
         #region API
 
-        private List<string> API_GetCurrencies(ulong id)
+        private List<string> GetCurrencies(string id)
         {
             var player = PlayerData.Find(id);
             if (player == null)
@@ -278,7 +352,7 @@ namespace Oxide.Plugins
             return data;
         }
 
-        private List<string> API_GetCurrencies()
+        private List<string> GetCurrencies()
         {
             var data = new List<string>();
             for (var i = 0; i < _config.Currencies.Count; i++)
@@ -289,14 +363,14 @@ namespace Oxide.Plugins
             return data;
         }
 
-        private double API_GetBalance(ulong id, string currency)
+        private double GetBalance(string id, string currency)
         {
             var player = PlayerData.Find(id);
             var data = player?.FindCurrency(currency);
             return data?.Balance ?? double.NaN; // Yeah it could be just a one line but I made it bigger for u
         }
 
-        private bool API_AddTransaction(ulong id, string currency, double amount, string description)
+        private bool AddTransaction(string id, string currency, double amount, string description)
         {
             var player = PlayerData.Find(id);
             var data = player?.FindCurrency(currency);
@@ -308,7 +382,7 @@ namespace Oxide.Plugins
             return true;
         }
 
-        private JObject API_GetTransactions(ulong id, string currency)
+        private JObject GetTransactions(string id, string currency)
         {
             var player = PlayerData.Find(id);
             var data = player?.FindCurrency(currency);
