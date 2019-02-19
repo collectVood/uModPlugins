@@ -13,6 +13,8 @@ namespace Oxide.Plugins
     {
         #region Variables
 
+        private static UIPlus _ins;
+
         private DataFile _data = new DataFile();
 
         #endregion
@@ -44,11 +46,12 @@ namespace Oxide.Plugins
 
         #region Configuration
 
-        private Configuration _config = new Configuration();
+        private static Configuration _config = new Configuration();
 
         public class Configuration
         {
-            [JsonProperty(PropertyName = "Debug")] public bool Debug = false;
+            [JsonProperty(PropertyName = "Debug")]
+            public bool Debug = false;
 
             [JsonProperty(PropertyName = "Clock Settings")]
             public ConfigurationClock Clock = new ConfigurationClock();
@@ -91,18 +94,6 @@ namespace Oxide.Plugins
 
             [JsonProperty(PropertyName = "Clock Update Frequency")]
             public float ClockUpdate = 3f;
-        }
-
-        public class ConfigurationGUIPlayers
-        {
-            [JsonProperty(PropertyName = "Icon")] public ConfigurationGUIIcon Icon = new ConfigurationGUIIcon();
-
-            [JsonProperty(PropertyName = "Icon")] public ConfigurationGUIIcon Icon = new ConfigurationGUIIcon();
-        }
-
-        public class ConfigurationGUIIcon
-        {
-
         }
 
         public class ConfigurationActivePlayers
@@ -156,6 +147,20 @@ namespace Oxide.Plugins
                 ObjectCreationHandling = ObjectCreationHandling.Replace)]
             public List<ConfigurationAutoMessageGroup> Groups = new List<ConfigurationAutoMessageGroup>
                 {new ConfigurationAutoMessageGroup()};
+
+            public static ConfigurationAutoMessage Find(string id)
+            {
+                for (var i = 0; i < _config.AutoMessages.Groups.Count; i++)
+                {
+                    var group = _config.AutoMessages.Groups[i];
+                    if (group.Current != null && (string.IsNullOrEmpty(group.Permission) ||
+                                                  _ins.permission.UserHasPermission(id, group.Permission)))
+                        return group.Current;
+
+                }
+
+                return null;
+            }
         }
 
         public class ConfigurationAutoMessageGroup
@@ -167,6 +172,8 @@ namespace Oxide.Plugins
             public string Frequency = "3m";
 
             [JsonIgnore] public uint ParsedFrequency;
+
+            [JsonIgnore] public ConfigurationAutoMessage Current;
 
             [JsonProperty(PropertyName = "Messages", ObjectCreationHandling = ObjectCreationHandling.Replace)]
             public List<ConfigurationAutoMessage> Messages = new List<ConfigurationAutoMessage>
@@ -212,9 +219,14 @@ namespace Oxide.Plugins
         // ReSharper disable once UnusedMember.Local
         private void OnServerInitialized()
         {
+            _ins = this;
+            
+            // Loading configuration
+            
             LoadConfig();
 
             // Parsing config variables, ..
+            
             var groupsCount = _config.AutoMessages.Groups.Count;
             for (var i = 0; i < groupsCount; i++)
             {
@@ -232,6 +244,7 @@ namespace Oxide.Plugins
             }
 
             // Initializing GUI
+            
             // TODO
 
             LoadData();
@@ -271,6 +284,17 @@ namespace Oxide.Plugins
         }
 
         #endregion
+        
+        #region Commands
+
+        private void CommandChatToggle(BasePlayer player, string command, string[] args)
+        {
+            var newEntry = _data.IsEnabled[player.userID] = !_data.IsEnabled[player.userID];
+            // TODO: Message
+            // TODO: Register command
+        }
+        
+        #endregion
 
         #region GUI
 
@@ -280,23 +304,84 @@ namespace Oxide.Plugins
 
         #region Controllers
 
-        public class UIPlayerController : MonoBehaviour
+        public class UIPlayerController : FacepunchBehaviour
         {
             public BasePlayer player;
 
             private void Awake()
             {
                 player = gameObject.GetComponent<BasePlayer>();
+                
+                InvokeRepeating(UpdateUIClock, _config.Clock.ClockUpdate, _config.Clock.ClockUpdate);
             }
 
-            private void FixedUpdate()
+            public void UpdateUI()
             {
-                // TODO: Update
+                UpdateUIClock();
+                UpdateUIActivePlayers();
+                UpdateUISleepingPlayers();
+                UpdateUIHelicopter();
+                UpdateUIChinook47();
+                UpdateUIPlane();
+                UpdateUITank();
+                UpdateUICargoShip();
+                UpdateUIAutoMessages();
+            }
+
+            public void UpdateUIClock()
+            {
+                // TODO
+            }
+
+            public void UpdateUIActivePlayers()
+            {
+                // TODO
+            }
+
+            public void UpdateUISleepingPlayers()
+            {
+                // TODO
+            }
+
+            public void UpdateUIHelicopter()
+            {
+                // TODO
+            }
+
+            public void UpdateUIChinook47()
+            {
+                // TODO
+            }
+
+            public void UpdateUIPlane()
+            {
+                // TODO
+            }
+
+            public void UpdateUITank()
+            {
+                // TODO
+            }
+
+            public void UpdateUICargoShip()
+            {
+                // TODO
+            }
+
+            public void UpdateUIAutoMessages()
+            {
+                // TODO
+            }
+
+            public void DestroyUI()
+            {
+                // TODO
             }
 
             public void OnDestroy()
             {
-                // TODO: Remove GUI
+                CancelInvoke(UpdateUIClock);
+                DestroyUI();
             }
         }
 
@@ -307,7 +392,7 @@ namespace Oxide.Plugins
         private void PrintDebug(string message)
         {
             if (_config.Debug)
-                Puts(message);
+                Interface.Oxide.LogDebug(message);
         }
 
         #endregion
