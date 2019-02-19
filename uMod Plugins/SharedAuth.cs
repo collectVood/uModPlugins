@@ -2,16 +2,21 @@
 using System.Collections.Generic;
 using Newtonsoft.Json;
 using Oxide.Core;
+using Oxide.Core.Plugins;
 
 namespace Oxide.Plugins
 {
     [Info("Shared Auth", "Iv Misticos", "1.0.0")]
     [Description("Make sharing auth better")]
-    public class SharedAuth : CovalencePlugin
+    public class SharedAuth : RustPlugin
     {
         #region Variables
+
+        // ReSharper disable once InconsistentNaming
+        [PluginReference] private Plugin ClansReborn;
+        [PluginReference] private Plugin Friends;
         
-        private List<PlayerData> _data = new List<PlayerData>();
+        private static List<PlayerData> _data = new List<PlayerData>();
 
         private const string PermissionUse = "sharedauth.use";
         private const string PermissionAdmin = "sharedauth.admin";
@@ -94,14 +99,22 @@ namespace Oxide.Plugins
             public ulong ID;
             public bool Enabled = true;
 
-            public bool AutoTeamAuth = false;
+            // ReSharper disable once RedundantDefaultMemberInitializer
+            public bool AllowTeamAuth = false;
             public bool AllowTeamUse = true;
+            // ReSharper disable once RedundantDefaultMemberInitializer
+            public bool AllowFriendsAuth = false;
+            public bool AllowFriendsUse = true;
+            // ReSharper disable once RedundantDefaultMemberInitializer
+            public bool AllowClanAuth = false;
+            // ReSharper disable once RedundantDefaultMemberInitializer
+            public bool AllowClanUse = false;
 
             public bool IsAdmin()
             {
                 var player = GetPlayer();
                 return _ins.permission.UserHasPermission(ID.ToString(), PermissionAdmin)
-                       || player == null || player.IsAdmin;
+                       || player == null && player.IsAdmin;
             }
 
             public bool IsTeamMember(ulong target)
@@ -109,11 +122,56 @@ namespace Oxide.Plugins
                 var team = GetTeam();
                 return team != null && team.members.IndexOf(target) != -1;
             }
+
+            private bool IsFriendsAPIFriend(ulong target) => _ins.Friends.Call<bool>("IsFriend", ID, target);
+
+            private bool IsClansRebornMember(ulong target) => _ins.ClansReborn.Call<string>("GetClanOf", ID) ==
+                                                             _ins.ClansReborn.Call<string>("GetClanOf", target);
+
+            public bool IsClanMember(ulong target)
+            {
+                return _ins.ClansReborn != null && IsClansRebornMember(target);
+            }
+
+            public bool IsFriend(ulong target)
+            {
+                return _ins.Friends != null && IsFriendsAPIFriend(target);
+            }
+            
+            public static PlayerData GetPlayerData(ulong id)
+            {
+                for (var i = 0; i < _data.Count; i++)
+                {
+                    if (_data[i].ID == id)
+                        return _data[i];
+                }
+
+                var data = new PlayerData {ID = id};
+                _data.Add(data);
+                return data;
+            }
         }
         
         #endregion
         
         #region Hooks
+
+        protected override void LoadDefaultMessages()
+        {
+            lang.RegisterMessages(new Dictionary<string, string>
+            {
+                { "Help", "Shared Auth Help:\n" +
+                          "enabled true/false - Enabled/disabled\n" +
+                          "ta true/false - Auto team auth\n" +
+                          "tu true/false - Allow team use without code\n" +
+                          "fa true/false - Auto friends auth\n" +
+                          "fu true/false - Allow friends use without code\n" +
+                          "ca true/false - Auto clan auth\n" +
+                          "cu true/false - Allow clan use without code" },
+                { "Success", "Success." },
+                { "No Permission", "You don't have enough permissions." },
+            }, this);
+        }
 
         private void OnServerInitialized()
         {
@@ -123,28 +181,44 @@ namespace Oxide.Plugins
             
             permission.RegisterPermission(PermissionUse, this);
             permission.RegisterPermission(PermissionAdmin, this);
+            
+            cmd.AddChatCommand(_config.Command, this, CommandChatSharedAuth);
         }
 
         private void Unload() => SaveData();
 
         private void OnServerSave() => SaveData();
 
-        private object CanUseLockedEntity(BasePlayer player, BaseLock door)
+        private object CanUseLockedEntity(BasePlayer player, BaseEntity door)
         {
-            var data = GetPlayerData(player.userID);
+            if (!CanUse(player.UserIDString))
+                return null;
+
+            var data = PlayerData.GetPlayerData(player.userID);
             if (!data.Enabled)
                 return null;
 
-            return data.IsAdmin() || data.AllowTeamUse && data.IsTeamMember(player.userID) ? (object) true : null;
+            return data.IsAdmin() || data.AllowTeamUse && data.IsTeamMember(door.OwnerID) ||
+                   data.AllowFriendsUse && data.IsFriend(door.OwnerID) ||
+                   data.AllowClanUse && data.IsClanMember(door.OwnerID)
+                ? (object) true
+                : null;
         }
         
-        private object OnCodeEntered(CodeLock codeLock, BasePlayer player, string code)
+        private object OnCodeEntered(BaseEntity codeLock, BasePlayer player, string code)
         {
-            var data = GetPlayerData(player.userID);
-            if (!data.Enabled)
+            if (!CanUse(player.UserIDString))
                 return null;
             
-            return data.IsAdmin() || data.AutoTeamAuth && data.IsTeamMember(player.userID) ? (object) true : null;
+            var data = PlayerData.GetPlayerData(player.userID);
+            if (!data.Enabled)
+                return null;
+
+            return data.IsAdmin() || data.AllowTeamAuth && data.IsTeamMember(codeLock.OwnerID) ||
+                   data.AllowFriendsAuth && data.IsFriend(codeLock.OwnerID) ||
+                   data.AllowClanAuth && data.IsFriend(codeLock.OwnerID)
+                ? (object) true
+                : null;
         }
         
         #endregion
@@ -153,45 +227,74 @@ namespace Oxide.Plugins
 
         private void CommandChatSharedAuth(BasePlayer player, string command, string[] args)
         {
-            if (args.Length > 0)
+            if (!CanUse(player.UserIDString))
             {
-                if (args[0].ToLower() == "help")
+                player.ChatMessage(GetMsg("No Permission", player.UserIDString));
+                return;
+            }
+            
+            if (args.Length < 2)
+            {
+                player.ChatMessage(GetMsg("Help", player.UserIDString));
+                return;
+            }
+
+            var data = PlayerData.GetPlayerData(player.userID);
+            var isTrue = args[1].Equals("true", StringComparison.CurrentCultureIgnoreCase) ||
+                         args[1].Equals("yes", StringComparison.CurrentCultureIgnoreCase);
+            
+            switch (args[0])
+            {
+                case "enabled":
                 {
-                    PlayerResponder.NotifyUser(player, "Master Mode Toggle: /sd masterMode");
+                    data.Enabled = isTrue;
+                    break;
                 }
-                else if (args[0].ToLower() == "mastermode" || args[0].ToLower() == "mm")
+
+                case "ta":
                 {
-                    if (player.IsAdmin || player.HasPermission(MasterPerm))
-                    {
-                        if (_holders.HasMaster(player.Id))
-                        {
-                            _holders.ToggleMasterMode(player.Id);
-                            if (_holders.IsAKeyMaster(player.Id))
-                            {
-                                PlayerResponder.NotifyUser(player, "Master Mode Enabled. You can now open all doors and chests.");
-                            }
-                            else
-                            {
-                                PlayerResponder.NotifyUser(player, "Master Mode Disabled. You can no longer open all doors and chests.");
-                            }
-                        }
-                        else
-                        {
-                            _holders.AddMaster(player.Id);
-                            _holders.GiveMasterKey(player.Id);
-                            PlayerResponder.NotifyUser(player, "Master Mode Enabled. You can now open all doors and chests.");
-                        }
-                    }
-                    else
-                    {
-                        PlayerResponder.NotifyUser(player, "Master Mode Not Available. You don't have permission to use this command.");
-                    }
+                    data.AllowTeamAuth = isTrue;
+                    break;
+                }
+
+                case "tu":
+                {
+                    data.AllowTeamUse = isTrue;
+                    break;
+                }
+
+                case "fa":
+                {
+                    data.AllowFriendsAuth = isTrue;
+                    break;
+                }
+
+                case "fu":
+                {
+                    data.AllowFriendsUse = isTrue;
+                    break;
+                }
+
+                case "ca":
+                {
+                    data.AllowClanAuth = isTrue;
+                    break;
+                }
+
+                case "cu":
+                {
+                    data.AllowClanUse = isTrue;
+                    break;
+                }
+
+                default:
+                {
+                    player.ChatMessage(GetMsg("Help", player.UserIDString));
+                    return;
                 }
             }
-            else
-            {
-                PlayerResponder.NotifyUser(player, "Master Mode Toggle: /sd masterMode");
-            }
+            
+            player.ChatMessage(GetMsg("Success", player.UserIDString));
         }
         
         #endregion
@@ -200,18 +303,7 @@ namespace Oxide.Plugins
 
         private string GetMsg(string key, string userId = null) => lang.GetMessage(key, this, userId);
 
-        private PlayerData GetPlayerData(ulong id)
-        {
-            for (var i = 0; i < _data.Count; i++)
-            {
-                if (_data[i].ID == id)
-                    return _data[i];
-            }
-
-            var data = new PlayerData {ID = id};
-            _data.Add(data);
-            return data;
-        }
+        private bool CanUse(string id) => !_config.UsePermission || permission.UserHasPermission(id, PermissionUse);
 
         #endregion
     }
