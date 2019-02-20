@@ -7,7 +7,7 @@ using Random = UnityEngine.Random;
 
 namespace Oxide.Plugins
 {
-    [Info("Quick Smelt", "Iv Misticos", "5.0.4")]
+    [Info("Quick Smelt", "Iv Misticos", "5.1.0")]
     [Description("Increases the speed of the furnace smelting")]
     class QuickSmelt : RustPlugin
     {
@@ -210,16 +210,22 @@ namespace Oxide.Plugins
             if (oven is BaseFuelLightSource || oven.needsBuildingPrivilegeToUse && !player.CanBuild())
                 return null;
 
+            PrintDebug("OnOvenToggle called");
             var component = oven.gameObject.GetComponent<FurnaceController>();
             var canUse = CanUse(oven.OwnerID);
             if (oven.IsOn())
+            {
                 component.StopCooking();
+            }
             else
             {
                 if (canUse)
                     component.StartCooking();
                 else
+                {
+                    PrintDebug($"No permission ({player.userID})");
                     return null;
+                }
             }
 
             return false;
@@ -259,105 +265,84 @@ namespace Oxide.Plugins
                 }
             }
 
-            private float SpeedMultiplier
-            {
-                get
-                {
-                    float modifier;
-                    if (!_config.SpeedMultipliers.TryGetValue(Furnace.ShortPrefabName, out modifier) &&
-                        !_config.SpeedMultipliers.TryGetValue("global", out modifier))
-                        modifier = 1.0f;
-
-                    return 0.5f / modifier;
-                }
-            }
-
-            private float FuelSpeedMultiplier
-            {
-                get
-                {
-                    float modifier;
-                    if (!_config.FuelSpeedMultipliers.TryGetValue(Furnace.ShortPrefabName, out modifier) &&
-                        !_config.FuelSpeedMultipliers.TryGetValue("global", out modifier))
-                        modifier = 1.0f;
-
-                    return modifier;
-                }
-            }
-
-            private int FuelUsageMultiplier
-            {
-                get
-                {
-                    int modifier;
-                    if (!_config.FuelUsageMultipliers.TryGetValue(Furnace.ShortPrefabName, out modifier) &&
-                        !_config.FuelUsageMultipliers.TryGetValue("global", out modifier))
-                        modifier = 1;
-
-                    return modifier;
-                }
-            }
-
-            private int SmeltingFrequency
-            {
-                get
-                {
-                    int modifier;
-                    if (!_config.SmeltingFrequencies.TryGetValue(Furnace.ShortPrefabName, out modifier) &&
-                        !_config.SmeltingFrequencies.TryGetValue("global", out modifier))
-                        modifier = 1;
-
-                    return modifier;
-                }
-            }
-
-            private float OutputMultiplier(string shortname)
-            {
-                Dictionary<string, float> modifiers;
-                float modifier;
-                if (!_config.OutputMultipliers.TryGetValue(Furnace.ShortPrefabName, out modifiers) &&
-                    !_config.OutputMultipliers.TryGetValue("global", out modifiers) ||
-                    !modifiers.TryGetValue(shortname, out modifier) &&
-                    !modifiers.TryGetValue("global", out modifier))
-                    return 1.0f;
-
-                PrintDebug($"{shortname} modifier: {modifier}");
-                return modifier;
-            }
-
-            private bool? IsAllowed(string shortname)
-            {
-                List<string> blacklist;
-                List<string> whitelist;
-                if ((!_config.Blacklist.TryGetValue(Furnace.ShortPrefabName, out blacklist) &&
-                     !_config.Blacklist.TryGetValue("global", out blacklist)) &
-                    (!_config.Whitelist.TryGetValue(Furnace.ShortPrefabName, out whitelist) &&
-                     !_config.Whitelist.TryGetValue("global", out whitelist)))
-                    return null;
-
-                if (blacklist != null && blacklist.Contains(shortname))
-                    return false;
-
-                if (whitelist != null && whitelist.Contains(shortname))
-                    return true;
-
-                return null;
-            }
-
-            private float _speedModifier;
+            private float _speedMultiplier;
 
             private float _fuelSpeedMultiplier;
 
             private int _fuelUsageMultiplier;
 
             private int _smeltingFrequency;
+            
+            private Dictionary<string, float> _outputModifiers;
+
+            private float OutputMultiplier(string shortname)
+            {
+                float modifier;
+                if (_outputModifiers == null || !_outputModifiers.TryGetValue(shortname, out modifier) &&
+                    !_outputModifiers.TryGetValue("global", out modifier))
+                    return 1.0f;
+
+                PrintDebug($"{shortname} modifier: {modifier}");
+                return modifier;
+            }
+
+            private List<string> _blacklist;
+            private List<string> _whitelist;
+
+            private bool? IsAllowed(string shortname)
+            {
+                if (_blacklist != null && _blacklist.Contains(shortname))
+                    return false;
+
+                if (_whitelist != null && _whitelist.Contains(shortname))
+                    return true;
+
+                return null;
+            }
 
             private void Awake()
             {
-                _speedModifier = SpeedMultiplier;
-                _fuelSpeedMultiplier = FuelSpeedMultiplier;
-                _fuelUsageMultiplier = FuelUsageMultiplier;
-                _smeltingFrequency = SmeltingFrequency;
+                // Well, sorry for my complicated code. But that should work faster! :)
+                
+                float modifierF; // float modifier
+                int modifierI; // int modifier
+                    
+                if (!_config.SpeedMultipliers.TryGetValue(Furnace.ShortPrefabName, out modifierF) &&
+                    !_config.SpeedMultipliers.TryGetValue("global", out modifierF))
+                    modifierF = 1.0f;
+
+                _speedMultiplier =  0.5f / modifierF;
+                
+                if (!_config.FuelSpeedMultipliers.TryGetValue(Furnace.ShortPrefabName, out modifierF) &&
+                    !_config.FuelSpeedMultipliers.TryGetValue("global", out modifierF))
+                    modifierF = 1.0f;
+
+                _fuelSpeedMultiplier = modifierF;
+                
+                if (!_config.FuelUsageMultipliers.TryGetValue(Furnace.ShortPrefabName, out modifierI) &&
+                    !_config.FuelUsageMultipliers.TryGetValue("global", out modifierI))
+                    modifierI = 1;
+
+                _fuelUsageMultiplier = modifierI;
+                
+                if (!_config.SmeltingFrequencies.TryGetValue(Furnace.ShortPrefabName, out modifierI) &&
+                    !_config.SmeltingFrequencies.TryGetValue("global", out modifierI))
+                    modifierI = 1;
+
+                _smeltingFrequency = modifierI;
+
+                if (!_config.OutputMultipliers.TryGetValue(Furnace.ShortPrefabName, out _outputModifiers) && !_config.OutputMultipliers.TryGetValue("global", out _outputModifiers))
+                {
+                    // ignored
+                }
+
+                if ((!_config.Blacklist.TryGetValue(Furnace.ShortPrefabName, out _blacklist) &&
+                     !_config.Blacklist.TryGetValue("global", out _blacklist)) &
+                    (!_config.Whitelist.TryGetValue(Furnace.ShortPrefabName, out _whitelist) &&
+                     !_config.Whitelist.TryGetValue("global", out _whitelist)))
+                {
+                    // ignored
+                }
             }
 
             private Item FindBurnable()
@@ -522,8 +507,8 @@ namespace Oxide.Plugins
                 Furnace.inventory.temperature = Furnace.cookingTemperature;
                 Furnace.UpdateAttachmentTemperature();
                 
-                PrintDebug($"Speed Multiplier: {SpeedMultiplier}");
-                Furnace.InvokeRepeating(Cook, _speedModifier, _speedModifier);
+                PrintDebug($"Speed Multiplier: {_speedMultiplier}");
+                Furnace.InvokeRepeating(Cook, _speedMultiplier, _speedMultiplier);
                 Furnace.SetFlag(BaseEntity.Flags.On, true);
             }
 
