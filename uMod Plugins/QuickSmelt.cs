@@ -280,7 +280,7 @@ namespace Oxide.Plugins
                 float modifier;
                 if (_outputModifiers == null || !_outputModifiers.TryGetValue(shortname, out modifier) &&
                     !_outputModifiers.TryGetValue("global", out modifier))
-                    return 1.0f;
+                    modifier =  1.0f;
 
                 PrintDebug($"{shortname} modifier: {modifier}");
                 return modifier;
