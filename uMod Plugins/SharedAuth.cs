@@ -2,19 +2,24 @@
 using System.Collections.Generic;
 using Newtonsoft.Json;
 using Oxide.Core;
+using Oxide.Core.Libraries.Covalence;
 using Oxide.Core.Plugins;
 
 namespace Oxide.Plugins
 {
-    [Info("Shared Auth", "Iv Misticos", "1.0.0")]
+    [Info("Shared Auth", "Iv Misticos", "1.0.1")]
     [Description("Make sharing auth better")]
     public class SharedAuth : RustPlugin
     {
         #region Variables
 
+#pragma warning disable 649
+        [PluginReference]
         // ReSharper disable once InconsistentNaming
-        [PluginReference] private Plugin ClansReborn;
-        [PluginReference] private Plugin Friends;
+        private Plugin Clans,
+            // ReSharper disable once InconsistentNaming
+            Friends; // Okay lol you wanted to be it like that
+#pragma warning restore 649
         
         private static List<PlayerData> _data = new List<PlayerData>();
 
@@ -125,12 +130,12 @@ namespace Oxide.Plugins
 
             private bool IsFriendsAPIFriend(ulong target) => _ins.Friends.Call<bool>("IsFriend", ID, target);
 
-            private bool IsClansRebornMember(ulong target) => _ins.ClansReborn.Call<string>("GetClanOf", ID) ==
-                                                             _ins.ClansReborn.Call<string>("GetClanOf", target);
+            private bool IsClansRebornMember(ulong target) => _ins.Clans.Call<string>("GetClanOf", ID) ==
+                                                             _ins.Clans.Call<string>("GetClanOf", target);
 
             public bool IsClanMember(ulong target)
             {
-                return _ins.ClansReborn != null && IsClansRebornMember(target);
+                return _ins.Clans != null && IsClansRebornMember(target);
             }
 
             public bool IsFriend(ulong target)
@@ -182,7 +187,7 @@ namespace Oxide.Plugins
             permission.RegisterPermission(PermissionUse, this);
             permission.RegisterPermission(PermissionAdmin, this);
             
-            cmd.AddChatCommand(_config.Command, this, CommandChatSharedAuth);
+            AddCovalenceCommand(_config.Command, "CommandChatSharedAuth");
         }
 
         private void Unload() => SaveData();
@@ -225,8 +230,15 @@ namespace Oxide.Plugins
         
         #region Commands
 
-        private void CommandChatSharedAuth(BasePlayer player, string command, string[] args)
+        private void CommandChatSharedAuth(IPlayer iplayer, string command, string[] args)
         {
+            if (iplayer.IsServer || !iplayer.IsConnected)
+                return;
+
+            var player = iplayer.Object as BasePlayer;
+            if (player == null)
+                return;
+            
             if (!CanUse(player.UserIDString))
             {
                 player.ChatMessage(GetMsg("No Permission", player.UserIDString));
