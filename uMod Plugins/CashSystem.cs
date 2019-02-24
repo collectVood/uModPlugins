@@ -4,6 +4,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Oxide.Core;
 using Oxide.Core.Libraries;
+using Oxide.Core.Libraries.Covalence;
 
 namespace Oxide.Plugins
 {
@@ -254,14 +255,14 @@ namespace Oxide.Plugins
 
         private void Unload() => SaveData();
 
-        private void OnPlayerInit(BasePlayer player)
+        private void OnUserConnected(IPlayer player)
         {
-            var data = PlayerData.Find(player.UserIDString);
+            var data = PlayerData.Find(player.Id);
             if (data == null)
             {
                 data = new PlayerData
                 {
-                    Id = player.UserIDString
+                    Id = player.Id
                 };
                 
                 _data.Players.Add(data);
