@@ -7,7 +7,7 @@ using Oxide.Core.Libraries;
 
 namespace Oxide.Plugins
 {
-    [Info("Cash System", "Iv Misticos", "1.0.2")]
+    [Info("Cash System", "Iv Misticos", "1.0.3")]
     [Description("Rich economics system")]
     class CashSystem : CovalencePlugin
     {
@@ -234,7 +234,7 @@ namespace Oxide.Plugins
             if (_config.Purge)
             {
                 var currentTime = _time.GetUnixTimestamp();
-                for (var i = _data.Players.Count - 1; i >= 0; i++)
+                for (var i = _data.Players.Count - 1; i >= 0; i--)
                 {
                     var data = _data.Players[i];
                     if (data.LastUpdate + _config.PurgeTime < currentTime)
