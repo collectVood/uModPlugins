@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Oxide.Core;
@@ -213,6 +214,8 @@ namespace Oxide.Plugins
                 { "Start Amount Transfer", "Start Amount" },
 //                { "Not Enough Permissions", "You don't have enough permissions" },
 //                { "Admin Money Transfer", "Admin money transfer" },
+//                { "Money Transfer To You", "Money transfer FROM {name} ({id})" },
+//                { "Money Transfer From You", "Money transfer TO {name} ({id})" },
 //                { "Incorrect Number", "Incorrect number" },
 //                { "Balance Get Error", "There was an error while getting this player's balance. Check his ID and the currency twice." },
 //                { "Balance Get", "Balance: {balance}" },
@@ -302,7 +305,7 @@ namespace Oxide.Plugins
 //                        return;
 //                    }
 //                    
-//                    player.Reply(GetMsg("Balance Get", player.Id).Replace("{balance}", balance.ToString(CultureInfo.CurrentCulture)));
+//                    player.Reply(GetMsg("Balance Get", player.Id).Replace("{balance}", $"{balance}"));
 //                    break;
 //                }
 //
@@ -337,6 +340,30 @@ namespace Oxide.Plugins
 //        #endregion
         
         #region API
+
+        private bool TransferBalance(string idFrom, string idTo, string currencyFrom, string currencyTo, double changeFrom,
+            double changeTo, string descriptionFrom, string descriptionTo)
+        {
+            var playerFrom = PlayerData.Find(idFrom);
+            if (playerFrom == null)
+                return false;
+            
+            var playerTo = PlayerData.Find(idTo);
+            if (playerTo == null)
+                return false;
+
+            var currencyDataFrom = playerFrom.FindCurrency(currencyFrom);
+            if (currencyDataFrom == null)
+                return false;
+            
+            var currencyDataTo = playerFrom.FindCurrency(currencyTo);
+            if (currencyDataTo == null)
+                return false;
+            
+            currencyDataFrom.Add(changeFrom, descriptionFrom);
+            currencyDataTo.Add(changeTo, descriptionTo);
+            return true;
+        }
 
         private List<string> GetCurrencies(string id)
         {
