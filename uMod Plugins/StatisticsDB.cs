@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using Oxide.Core;
 using Oxide.Core.Plugins;
 using Rust;
@@ -10,7 +11,7 @@ using Time = Oxide.Core.Libraries.Time;
 
 namespace Oxide.Plugins
 {
-    [Info("Statistics DB", "Iv Misticos", "1.0.1")]
+    [Info("Statistics DB", "Iv Misticos", "1.0.2")]
     [Description("Statistics database for developers")]
     class StatisticsDB : RustPlugin
     {
@@ -28,8 +29,8 @@ namespace Oxide.Plugins
         #region Configuration
 
         private static Configuration _config = new Configuration();
-        
-        public class Configuration
+
+        private class Configuration
         {
             [JsonProperty(PropertyName = "Debug")]
             public bool Debug = false;
@@ -159,8 +160,8 @@ namespace Oxide.Plugins
             [JsonProperty(PropertyName = "Statistics", ObjectCreationHandling = ObjectCreationHandling.Replace)]
             public Dictionary<ulong, PlayerStats> Statistics = new Dictionary<ulong, PlayerStats>();
             
-            [JsonProperty(PropertyName = "Players", DefaultValueHandling = DefaultValueHandling.Ignore, ObjectCreationHandling = ObjectCreationHandling.Replace)]
-            public List<OldPlayerStats> Players = new List<OldPlayerStats>();
+//            [JsonProperty(PropertyName = "Players", DefaultValueHandling = DefaultValueHandling.Ignore, ObjectCreationHandling = ObjectCreationHandling.Replace)]
+//            public List<OldPlayerStats> Players = new List<OldPlayerStats>();
         }
 
         private class PlayerStats
@@ -391,6 +392,7 @@ namespace Oxide.Plugins
                 PrintDebug("Called PlayerStats Constructor");
             }
 
+            // ReSharper disable once MemberCanBePrivate.Local
             internal PlayerStats(ulong id)
             {
                 PrintDebug("Called PlayerStats Constructor 2");
@@ -418,19 +420,19 @@ namespace Oxide.Plugins
             public static PlayerStats TryFind(ulong id) => Find(id) ?? new PlayerStats(id);
         }
 
-        private class OldPlayerStats : PlayerStats
-        {
-            public ulong ID;
-
-            public void Convert()
-            {
-                if (_data.Statistics.ContainsKey(ID))
-                    return;
-                
-                // ReSharper disable once ObjectCreationAsStatement
-                _data.Statistics.Add(ID, this);
-            }
-        }
+//        private class OldPlayerStats : PlayerStats
+//        {
+//            public ulong ID;
+//
+//            public void Convert()
+//            {
+//                if (_data.Statistics.ContainsKey(ID))
+//                    return;
+//                
+//                // ReSharper disable once ObjectCreationAsStatement
+//                _data.Statistics.Add(ID, this);
+//            }
+//        }
 
         #endregion
         
@@ -447,15 +449,15 @@ namespace Oxide.Plugins
 
             LoadData();
 
-            if (_data.Players != null)
-            {
-                for (var i = _data.Players.Count - 1; i >= 0; i--)
-                {
-                    var entry = _data.Players[i];
-                    entry.Convert();
-                    _data.Players.RemoveAt(i);
-                }
-            }
+//            if (_data.Players != null)
+//            {
+//                for (var i = _data.Players.Count - 1; i >= 0; i--)
+//                {
+//                    var entry = _data.Players[i];
+//                    entry.Convert();
+//                    _data.Players.RemoveAt(i);
+//                }
+//            }
 
             var playersCount = BasePlayer.activePlayerList.Count;
             for (var i = 0; i < playersCount; i++)
@@ -661,6 +663,10 @@ namespace Oxide.Plugins
         #region API
         
         // General API
+
+        private JObject API_GetAllData() => JObject.FromObject(_data.Statistics);
+        private JObject API_GetAllPlayerData(ulong id) => JObject.FromObject(PlayerStats.Find(id));
+        private bool API_ContainsPlayer(ulong id) => PlayerStats.Find(id) != null;
 
         private uint? API_GetJoins(ulong id) => PlayerStats.Find(id)?.Joins;
         private uint? API_GetLeaves(ulong id) => PlayerStats.Find(id)?.Leaves;
