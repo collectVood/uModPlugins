@@ -1,22 +1,32 @@
 using System;
+using System.Collections.Generic;
 using Newtonsoft.Json;
 using Oxide.Core;
 using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Balloon Plus", "Iv Misticos", "1.0.0")]
+    [Info("Balloon Plus", "Iv Misticos", "1.0.1")]
     [Description("Control your balloon's flight")]
     class BalloonPlus : RustPlugin
     {
+        #region Variables
+
+        private static BalloonPlus _ins;
+        
+        #endregion
+        
         #region Configuration
 
-        private Configuration _config;
+        private static Configuration _config;
         
         private class Configuration
         {
             [JsonProperty(PropertyName = "Speed Modifier")]
             public float Modifier = 250f;
+
+            [JsonProperty(PropertyName = "Speed Modifiers")]
+            public List<SpeedData> Modifiers = new List<SpeedData> {new SpeedData()};
             
             [JsonProperty(PropertyName = "Move Button")]
             public string MoveButton = "SPRINT";
@@ -25,6 +35,27 @@ namespace Oxide.Plugins
             public bool DisableWindForce = true;
 
             [JsonIgnore] public BUTTON ParsedMoveButton;
+        }
+
+        private class SpeedData
+        {
+            [JsonProperty(PropertyName = "Permission")]
+            public string Permission = "balloonplus.vip";
+            
+            [JsonProperty(PropertyName = "Speed Modifier")]
+            public float Modifier = 300f;
+
+            public static float GetModifier(string id)
+            {
+                for (var i = 0; i < _config.Modifiers.Count; i++)
+                {
+                    var modifier = _config.Modifiers[i];
+                    if (_ins.permission.UserHasPermission(id, modifier.Permission))
+                        return modifier.Modifier;
+                }
+
+                return _config.Modifier;
+            }
         }
 
         protected override void LoadConfig()
@@ -71,12 +102,14 @@ namespace Oxide.Plugins
             if (balloon == null)
                 return;
 
-            var direction = player.eyes.HeadForward() * _config.Modifier;
+            var direction = player.eyes.HeadForward() * SpeedData.GetModifier(player.UserIDString);
             balloon.myRigidbody.AddForce(direction.x, 0, direction.z, ForceMode.Force); // We shouldn't move the balloon up or down, so I use 0 here as y.
         }
 
         private void Init()
         {
+            _ins = this;
+            
             if (!Enum.TryParse(_config.MoveButton, out _config.ParsedMoveButton))
             {
                 PrintError("You specified incorrect move button. Please, edit your configuration.");
