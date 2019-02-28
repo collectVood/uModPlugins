@@ -25,7 +25,7 @@ namespace Oxide.Plugins
             [JsonProperty(PropertyName = "Speed Modifier")]
             public float Modifier = 250f;
 
-            [JsonProperty(PropertyName = "Speed Modifiers")]
+            [JsonProperty(PropertyName = "Speed Modifiers", ObjectCreationHandling = ObjectCreationHandling.Replace)]
             public List<SpeedData> Modifiers = new List<SpeedData> {new SpeedData()};
             
             [JsonProperty(PropertyName = "Move Button")]
