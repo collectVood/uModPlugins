@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using Newtonsoft.Json;
 using Oxide.Core;
+using Oxide.Core.Libraries.Covalence;
 using Oxide.Game.Rust.Libraries;
 using UnityEngine;
 using Time = UnityEngine.Time;
@@ -9,7 +10,7 @@ using Time = UnityEngine.Time;
 
 namespace Oxide.Plugins
 {
-    [Info("Object Remover", "Iv Misticos", "3.0.2")]
+    [Info("Object Remover", "Iv Misticos", "3.0.3")]
     [Description("Removes furnaces, lanterns, campfires, buildings etc. on command")]
     class ObjectRemover : RustPlugin
     {
@@ -87,36 +88,41 @@ namespace Oxide.Plugins
             if (!permission.PermissionExists(_config.PermissionUse))
                 permission.RegisterPermission(_config.PermissionUse, this);
 
-            var cmdLib = GetLibrary<Command>();
-            cmdLib.AddChatCommand(_config.Command, this, CommandChatObject);
-            cmdLib.AddConsoleCommand(_config.Command, this, CommandConsoleObject);
+//            var cmdLib = GetLibrary<Command>();
+//            cmdLib.AddChatCommand(_config.Command, this, CommandChatObject);
+//            cmdLib.AddConsoleCommand(_config.Command, this, CommandConsoleObject);
+            AddCovalenceCommand(_config.Command, "CommandObject");
         }
         
         #endregion
 
         #region Commands
 
-        private void CommandChatObject(BasePlayer player, string command, string[] args)
+        private void CommandObject(IPlayer player, string command, string[] args)
         {
-            var id = player.UserIDString;
-            if (!permission.UserHasPermission(id, _config.PermissionUse))
+            var id = player.Id;
+            var prefix = player.IsServer ? string.Empty : _config.Prefix;
+            if (!player.IsServer && !permission.UserHasPermission(id, _config.PermissionUse))
             {
-                player.ChatMessage(_config.Prefix + GetMsg("No Rights", id));
+                player.Reply(prefix + GetMsg("No Rights", id));
                 return;
             }
 
             if (args.Length < 1)
             {
-                player.ChatMessage(_config.Prefix + GetMsg("Help", id));
+                player.Reply(prefix + GetMsg("Help", id));
                 return;
             }
 
             var options = new RemoveOptions();
             options.Parse(args);
+            if (player.IsServer)
+                options.Radius = 0f;
             
             var entity = args[0];
+            var position = (player.Object as BasePlayer)?.transform.position ?? Vector3.zero;
             var before = Time.realtimeSinceStartup;
-            var objects = FindObjects(player.transform.position, entity, options);
+            var objects = FindObjects(position, entity, options);
             var count = objects.Count;
 
             if (!options.Count)
@@ -130,23 +136,62 @@ namespace Oxide.Plugins
                 }
             }
 
-            player.ChatMessage(_config.Prefix + GetMsg(options.Count ? "Count" : "Removed", id)
+            player.Reply(prefix + GetMsg(options.Count ? "Count" : "Removed", id)
                                    .Replace("{count}", count.ToString()).Replace("{time}",
                                        (Time.realtimeSinceStartup - before).ToString("0.###")));
         }
-        
-        private bool CommandConsoleObject(ConsoleSystem.Arg arg)
-        {
-            var player = arg.Player();
-            if (player == null)
-            {
-                arg.ReplyWith(GetMsg("No Console"));
-                return true;
-            }
-            
-            CommandChatObject(player, string.Empty, arg.Args ?? new string[0]);
-            return false;
-        }
+
+//        private void CommandChatObject(BasePlayer player, string command, string[] args)
+//        {
+//            var id = player.UserIDString;
+//            if (!permission.UserHasPermission(id, _config.PermissionUse))
+//            {
+//                player.ChatMessage(_config.Prefix + GetMsg("No Rights", id));
+//                return;
+//            }
+//
+//            if (args.Length < 1)
+//            {
+//                player.ChatMessage(_config.Prefix + GetMsg("Help", id));
+//                return;
+//            }
+//
+//            var options = new RemoveOptions();
+//            options.Parse(args);
+//            
+//            var entity = args[0];
+//            var before = Time.realtimeSinceStartup;
+//            var objects = FindObjects(player.transform.position, entity, options);
+//            var count = objects.Count;
+//
+//            if (!options.Count)
+//            {
+//                for (var i = 0; i < count; i++)
+//                {
+//                    var ent = objects[i];
+//                    if (ent == null || ent.IsDestroyed)
+//                        continue;
+//                    ent.Kill();
+//                }
+//            }
+//
+//            player.ChatMessage(_config.Prefix + GetMsg(options.Count ? "Count" : "Removed", id)
+//                                   .Replace("{count}", count.ToString()).Replace("{time}",
+//                                       (Time.realtimeSinceStartup - before).ToString("0.###")));
+//        }
+//        
+//        private bool CommandConsoleObject(ConsoleSystem.Arg arg)
+//        {
+//            var player = arg.Player();
+//            if (player == null)
+//            {
+//                arg.ReplyWith(GetMsg("No Console"));
+//                return true;
+//            }
+//            
+//            CommandChatObject(player, string.Empty, arg.Args ?? new string[0]);
+//            return false;
+//        }
 
         #endregion
         
@@ -154,7 +199,7 @@ namespace Oxide.Plugins
 
         private class RemoveOptions
         {
-            public float Radius = 10f;
+            public float Radius = 0f;
             public bool Count = true;
             public bool OutsideCupboard = true;
             public bool InsideCupboard = true;
@@ -177,7 +222,7 @@ namespace Oxide.Plugins
                         case "radius":
                         {
                             if (!float.TryParse(args[i + 1], out Radius))
-                                Radius = 10f;
+                                Radius = 0f;
 
                             break;
                         }

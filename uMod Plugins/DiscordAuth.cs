@@ -87,9 +87,22 @@ namespace Oxide.Plugins
             }
         }
 
-        private void SaveData() => Interface.Oxide.DataFileSystem.WriteObject(Name, _data);
+        private void SaveData()
+        {
+            switch (_config.Storage.Type)
+            {
+                // TODO
+            }
+        }
 
         private void LoadData()
+        {
+            // TODO
+        }
+
+        private void SaveDataFiles() => Interface.Oxide.DataFileSystem.WriteObject(Name, _data);
+
+        private void LoadDataFiles()
         {
             try
             {
@@ -119,6 +132,42 @@ namespace Oxide.Plugins
             
             [JsonProperty(PropertyName = "Discord API Token")]
             public string APIToken = "";
+            
+            [JsonProperty(PropertyName = "Game Playing")]
+            public string Game = "Auth Codes";
+            
+            [JsonProperty(PropertyName = "Storage")]
+            public ConfigurationDataStorage Storage = new ConfigurationDataStorage();
+        }
+
+        private class ConfigurationDataStorage
+        {
+            [JsonProperty(PropertyName = "Data Storage Type (MySQL / SQLite / Files)")]
+            public string Type = "Files";
+            
+            [JsonProperty(PropertyName = "MySQL Settings")]
+            public ConfigurationDataStorageMySQL MySQL = new ConfigurationDataStorageMySQL();
+        }
+
+        private class ConfigurationDataStorageMySQL
+        {
+            [JsonProperty(PropertyName = "Host")]
+            public string Host = "127.0.0.1";
+            
+            [JsonProperty(PropertyName = "Port")]
+            public int Port = 3306;
+            
+            [JsonProperty(PropertyName = "Database")]
+            public string Database = "database";
+            
+            [JsonProperty(PropertyName = "Table")]
+            public string Table = "table";
+            
+            [JsonProperty(PropertyName = "Username")]
+            public string Username = "username";
+            
+            [JsonProperty(PropertyName = "Password")]
+            public string Password = "password";
         }
 
         protected override void LoadConfig()
@@ -163,7 +212,7 @@ namespace Oxide.Plugins
         private void Loaded()
         {
             LoadData();
-
+            
             try
             {
                 Discord.CreateClient(this, _config.APIToken);
@@ -172,10 +221,22 @@ namespace Oxide.Plugins
             {
                 PrintWarning("Please, enter a correct API token");
                 Interface.Oxide.UnloadPlugin(Name);
-                return;
             }
             
             AddCovalenceCommand(_config.Command, "CommandRun");
+
+            timer.Once(5f, () =>
+            {
+                _client?.UpdateStatus(new Presence
+                {
+                    AFK = false,
+                    Game = new Ext.Discord.DiscordObjects.Game
+                    {
+                        Name = _config.Game,
+                        Type = ActivityType.Game
+                    }
+                });
+            });
         }
 
         private void OnServerSave() => SaveData();
@@ -194,7 +255,7 @@ namespace Oxide.Plugins
             // No self-check
             if (message.author.bot == true)
                 return;
-            
+
             Channel.GetChannel(_client, message.channel_id, channel =>
             {
                 // Only DM
@@ -202,43 +263,41 @@ namespace Oxide.Plugins
                     return;
 
                 // Trying to find a key
-                message.author.CreateDM(_client, dm =>
+                var found = KeyInfo.FindByKey(message.content);
+                if (found == null)
                 {
-                    var found = KeyInfo.FindByKey(message.content);
-                    if (found == null)
-                    {
-                        // Nope
-                        dm.CreateMessage(_client, GetMsg("Incorrect Code"));
-                        return;
-                    }
+                    // Nope
+                    channel.CreateMessage(_client, GetMsg("Incorrect Code"));
+                    return;
+                }
 
-                    // Yeah
-                    dm.CreateMessage(_client, GetMsg("Connected", found.UserId));
-                    var data = PlayerData.FindByGame(found.UserId);
-                    if (data != null)
-                    {
-                        dm.CreateMessage(_client, GetMsg("Rewrite Game Connection", found.UserId));
-                        _data.Remove(data);
-                    }
-                    
-                    data = PlayerData.FindByDiscord(message.author.id);
-                    if (data != null)
-                    {
-                        dm.CreateMessage(_client, GetMsg("Rewrite Discord Connection", found.UserId));
-                        _data.Remove(data);
-                    }
+                // Yeah
+                channel.CreateMessage(_client, GetMsg("Connected", found.UserId));
+                var data1 = PlayerData.FindByGame(found.UserId);
+                var data2 = PlayerData.FindByDiscord(message.author.id);
 
-                    _data.Add(new PlayerData
-                    {
-                        GameId = found.UserId,
-                        DiscordId = message.author.id
-                    });
-                    
-                    _keys.Remove(found);
+                if (data1 != null)
+                {
+                    channel.CreateMessage(_client, GetMsg("Rewrite Game Connection", found.UserId));
+                    _data.Remove(data1);
+                }
+
+                if (data2 != null)
+                {
+                    channel.CreateMessage(_client, GetMsg("Rewrite Discord Connection", found.UserId));
+                    _data.Remove(data2);
+                }
+
+                _data.Add(new PlayerData
+                {
+                    GameId = found.UserId,
+                    DiscordId = message.author.id
                 });
+
+                _keys.Remove(found);
             });
         }
-        
+
         #endregion
         
         #endregion
