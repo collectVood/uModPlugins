@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Text;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Oxide.Core;
@@ -9,7 +8,7 @@ using Oxide.Core.Libraries.Covalence;
 
 namespace Oxide.Plugins
 {
-    [Info("Cash System", "Iv Misticos", "1.0.3")]
+    [Info("Cash System", "Iv Misticos", "1.0.4")]
     [Description("Rich economics system")]
     class CashSystem : CovalencePlugin
     {
