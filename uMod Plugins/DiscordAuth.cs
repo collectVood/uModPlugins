@@ -15,7 +15,7 @@ using Time = Oxide.Core.Libraries.Time;
 
 namespace Oxide.Plugins
 {
-    [Info("Discord Auth", "Tricky and misticos", "0.1.0")]
+    [Info("Discord Auth", "Tricky & Iv Misticos", "0.1.0")]
     [Description("Allows players to connect to their discord account")]
     public class DiscordAuth : CovalencePlugin
     {
