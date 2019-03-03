@@ -6,7 +6,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Balloon Plus", "Iv Misticos", "1.0.1")]
+    [Info("Balloon Plus", "Iv Misticos", "1.0.2")]
     [Description("Control your balloon's flight")]
     class BalloonPlus : RustPlugin
     {
@@ -117,9 +117,15 @@ namespace Oxide.Plugins
                 return;
             }
 
-            foreach (var balloon in UnityEngine.Object.FindObjectsOfType<HotAirBalloon>())
+            for (var i = 0; i < _config.Modifiers.Count; i++)
             {
-                OnEntitySpawned(balloon);
+                permission.RegisterPermission(_config.Modifiers[i].Permission, this);
+            }
+
+            var objects = UnityEngine.Object.FindObjectsOfType<HotAirBalloon>();
+            for (var index = 0; index < objects.Length; index++)
+            {
+                OnEntitySpawned(objects[index]);
             }
         }
         
