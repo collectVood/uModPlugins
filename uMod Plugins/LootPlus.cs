@@ -8,24 +8,80 @@ namespace Oxide.Plugins
     [Description("Modify loot on your server.")]
     class LootPlus : RustPlugin
     {
+        #region Variables
+
+        private static LootPlus _ins;
+        
+        private Random _random = new Random();
+        
+        #endregion
+        
         #region Configuration
 
         private Configuration _config;
 
         private class Configuration
         {
-            [JsonProperty(PropertyName = "Loot Skins")]
-            public Dictionary<string, Dictionary<string, ulong>> Skins = new Dictionary<string, Dictionary<string, ulong>>
+            [JsonProperty(PropertyName = "Loot Skins", NullValueHandling = NullValueHandling.Ignore)]
+            public Dictionary<string, Dictionary<string, ulong>> Skins = null; // OLD
+            
+            [JsonProperty(PropertyName = "Containers", ObjectCreationHandling = ObjectCreationHandling.Replace)]
+            public List<ContainerData> Containers = new List<ContainerData> {new ContainerData()};
+        }
+
+        private class ContainerData
+        {
+            [JsonProperty(PropertyName = "Entity Shortname")]
+            public string Shortname = "entity.shortname";
+
+            [JsonProperty(PropertyName = "Add (true) / Refresh (false)")]
+            public bool AddItems = false;
+            
+            [JsonProperty(PropertyName = "Items Count", ObjectCreationHandling = ObjectCreationHandling.Replace)]
+            public List<AmountData> Count = new List<AmountData> {new AmountData()};
+            
+            [JsonProperty(PropertyName = "Items", ObjectCreationHandling = ObjectCreationHandling.Replace)]
+            public List<ItemData> Items = new List<ItemData> {new ItemData()};
+        }
+
+        private class AmountData
+        {
+            [JsonProperty(PropertyName = "Amount")]
+            public int Amount = 3;
+            
+            [JsonProperty(PropertyName = "Chance")]
+            public int Chance = 10;
+
+            public static int Select(List<AmountData> data)
             {
-                { "global.example", new Dictionary<string, ulong>
+                var sum1 = 0;
+                for (var i = 0; i < data.Count; i++)
                 {
-                    { "stones.example", 0 }
-                } },
-                { "crate_basic.example", new Dictionary<string, ulong>
+                    var entry = data[i];
+                    sum1 += entry.Chance;
+                }
+
+                var random = _ins._random.Next(0, sum1);
+                var sum2 = 0;
+                for (var i = 0; i < data.Count; i++)
                 {
-                    { "wood.example", 0 }
-                } }
-            };
+                    var entry = data[i];
+                    sum2 += entry.Chance;
+                    if (random <= sum2)
+                        return entry.Amount;
+                }
+                
+                return -1;
+            }
+        }
+
+        private class ItemData
+        {
+            [JsonProperty(PropertyName = "Item Shortname")]
+            public string Shortname = "item.shortname";
+            
+            [JsonProperty(PropertyName = "Count")]
+            public List<AmountData> Count = new List<AmountData> {new AmountData()};
         }
 
         protected override void LoadConfig()
@@ -50,43 +106,51 @@ namespace Oxide.Plugins
 
         #endregion
         
-        #region Oxide Hooks
+        #region Hooks
 
-        // ReSharper disable once UnusedMember.Local
         private void OnServerInitialized()
         {
             LoadConfig();
-            
-            var containers = UnityEngine.Object.FindObjectsOfType<LootContainer>();
-            var containersCount = containers.Length;
-            for (var i = 0; i < containersCount; i++)
+
+            NextFrame(() =>
             {
-                var container = containers[i];
-                LootHandler(container);
-            }
+                var containers = UnityEngine.Object.FindObjectsOfType<LootContainer>();
+                var containersCount = containers.Length;
+                for (var i = 0; i < containersCount; i++)
+                {
+                    var container = containers[i];
+                    LootHandler(container);
+                }
+            });
         }
 
-        // ReSharper disable once UnusedMember.Local
-        private void OnLootSpawn(LootContainer container) => NextFrame(() => LootHandler(container));
-
-        // ReSharper disable once SuggestBaseTypeForParameter
-        private void LootHandler(LootContainer entity)
+        private void OnLootSpawn(StorageContainer container) => NextFrame(() => LootHandler(container));
+        
+        #endregion
+        
+        #region Controller
+        
+        
+        
+        #endregion
+        
+        #region Helpers
+        
+        private void LootHandler(StorageContainer entity)
         {
             if (entity == null)
                 return;
 
-            Dictionary<string, ulong> items1;
-            Dictionary<string, ulong> itemsGlobal = null;
-            if (!_config.Skins.TryGetValue(entity.ShortPrefabName, out items1) && !_config.Skins.TryGetValue("global", out itemsGlobal))
-                return;
-
-            var items2 = entity.inventory.itemList;
-            var items2Count = items2.Count;
-            for (var i = 0; i < items2Count; i++)
+            for (var i = 0; i < _config.Containers.Count; i++)
             {
-                var item = items2[i];
-                itemsGlobal?.TryGetValue(item.info.shortname, out item.skin);
-                items1?.TryGetValue(item.info.shortname, out item.skin);
+                var container = _config.Containers[i];
+                if (container.Shortname != entity.ShortPrefabName)
+                    continue;
+
+                for (int j = 0; j < container.Items.Count; j++)
+                {
+                    
+                }
             }
         }
         
