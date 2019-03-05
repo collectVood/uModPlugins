@@ -1,6 +1,4 @@
-﻿// Requires: Discord
-
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -10,13 +8,12 @@ using Oxide.Core.Libraries.Covalence;
 using Oxide.Ext.Discord;
 using Oxide.Ext.Discord.Attributes;
 using Oxide.Ext.Discord.DiscordObjects;
-using UnityEngine;
 using Time = Oxide.Core.Libraries.Time;
 
 namespace Oxide.Plugins
 {
-    [Info("Discord Auth", "Tricky & Iv Misticos", "0.1.0")]
-    [Description("Allows players to connect to their discord account")]
+    [Info("Discord Auth", "Iv Misticos", "1.0.1")]
+    [Description("Discord account connection with API")]
     public class DiscordAuth : CovalencePlugin
     {
         [DiscordClient]
@@ -243,14 +240,15 @@ namespace Oxide.Plugins
             
             LoadData();
 
-            new GameObject().AddComponent<ExpirationController>();
+//            new GameObject().AddComponent<ExpirationController>();
+            timer.Every(1f, DoExpiration);
         }
 
         private void OnServerSave() => SaveData();
 
         private void Unload()
         {
-            UnityEngine.Object.Destroy(ExpirationController.Instance.gameObject);
+//            UnityEngine.Object.Destroy(ExpirationController.Instance.gameObject);
             SaveData();
             Discord.CloseClient(_client);
         }
@@ -374,33 +372,46 @@ namespace Oxide.Plugins
         
         #region Code Expiration
 
-        private class ExpirationController : FacepunchBehaviour
+        private void DoExpiration()
         {
-            public static ExpirationController Instance;
-
-            private void Awake()
+            var time = _time.GetUnixTimestamp();
+            for (var i = _keys.Count - 1; i >= 0; i--)
             {
-                if (Instance != null)
-                    Destroy(Instance.gameObject);
+                var key = _keys[i];
+                if (key.ValidUntil > time) continue;
 
-                Instance = this;
-                
-                InvokeRepeating(DoExpiration, 1f, 1f);
-            }
-
-            private void DoExpiration()
-            {
-                var time = _time.GetUnixTimestamp();
-                for (var i = _keys.Count - 1; i >= 0; i--)
-                {
-                    var key = _keys[i];
-                    if (key.ValidUntil > time) continue;
-                    
-                    key.ExpireMessage();
-                    _keys.RemoveAt(i);
-                }
+                key.ExpireMessage();
+                _keys.RemoveAt(i);
             }
         }
+
+//        private class ExpirationController : MonoBehaviour
+//        {
+//            public static ExpirationController Instance;
+//
+//            private void Awake()
+//            {
+//                if (Instance != null)
+//                    Destroy(Instance.gameObject);
+//
+//                Instance = this;
+//                
+//                InvokeRepeating(DoExpiration, 1f, 1f);
+//            }
+//
+//            private void DoExpiration()
+//            {
+//                var time = _time.GetUnixTimestamp();
+//                for (var i = _keys.Count - 1; i >= 0; i--)
+//                {
+//                    var key = _keys[i];
+//                    if (key.ValidUntil > time) continue;
+//                    
+//                    key.ExpireMessage();
+//                    _keys.RemoveAt(i);
+//                }
+//            }
+//        }
         
         #endregion
 
