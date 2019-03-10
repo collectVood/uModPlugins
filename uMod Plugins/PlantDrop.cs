@@ -6,7 +6,7 @@ using Random = System.Random;
 
 namespace Oxide.Plugins
 {
-    [Info("Plant Drop", "Iv Misticos", "1.2.0")]
+    [Info("Plant Drop", "Iv Misticos", "1.2.1")]
     [Description("Allows planting crops anywhere by dropping the seed")]
     class PlantDrop : RustPlugin
     {
@@ -62,6 +62,9 @@ namespace Oxide.Plugins
         
         private void OnItemDropped(Item item, BaseNetworkable entity)
         {
+            if (item?.info == null || entity == null)
+                return;
+            
             var shortname = item.info.shortname;
             var pos = entity.transform.position;
 

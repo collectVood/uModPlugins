@@ -5,7 +5,7 @@ using Oxide.Core;
 
 namespace Oxide.Plugins
 {
-    [Info("Loot Despawn", "Iv Misticos", "2.0.1")]
+    [Info("Loot Despawn", "Iv Misticos", "2.0.2")]
     [Description("Customize loot despawn")]
     public class LootDespawn : RustPlugin
     {
@@ -66,7 +66,7 @@ namespace Oxide.Plugins
         
         private void SetDespawnTime(Item item, DroppedItem droppedItem)
         {
-            if (!_config.Enabled || droppedItem == null)
+            if (!_config.Enabled || droppedItem == null || item?.info == null)
                 return;
             
             droppedItem.CancelInvoke(nameof(DroppedItem.IdleDestroy));
