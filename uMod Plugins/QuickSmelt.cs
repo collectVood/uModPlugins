@@ -7,7 +7,7 @@ using Random = UnityEngine.Random;
 
 namespace Oxide.Plugins
 {
-    [Info("Quick Smelt", "Iv Misticos", "5.1.0")]
+    [Info("Quick Smelt", "Iv Misticos", "5.1.1")]
     [Description("Increases the speed of the furnace smelting")]
     class QuickSmelt : RustPlugin
     {
@@ -212,7 +212,7 @@ namespace Oxide.Plugins
 
             PrintDebug("OnOvenToggle called");
             var component = oven.gameObject.GetComponent<FurnaceController>();
-            var canUse = CanUse(oven.OwnerID);
+            var canUse = CanUse(oven.OwnerID) || CanUse(player.userID);
             if (oven.IsOn())
             {
                 component.StopCooking();
