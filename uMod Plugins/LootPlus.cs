@@ -1,9 +1,10 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using Newtonsoft.Json;
 using Oxide.Core;
-using Oxide.Extensions;
-using Oxide.Plugins;
+//using Oxide.Extensions;
+using UnityEngine;
 using Random = System.Random;
 
 namespace Oxide.Plugins
@@ -95,7 +96,8 @@ namespace Oxide.Plugins
         private class SkinData : ChanceData
         {
             [JsonProperty(PropertyName = "Skin")]
-            public ulong Skin;
+            // ReSharper disable once RedundantDefaultMemberInitializer
+            public ulong Skin = 0;
         }
 
         private class AmountData : ChanceData
@@ -121,8 +123,11 @@ namespace Oxide.Plugins
                 // xD
 
                 if (data == null)
+                {
+                    PrintDebug("Data is null");
                     return null;
-                
+                }
+
                 var sum1 = 0;
                 for (var i = 0; i < data.Count; i++)
                 {
@@ -130,7 +135,13 @@ namespace Oxide.Plugins
                     sum1 += entry?.Chance ?? 0;
                 }
 
-                var random = Ins.Random.Next(0, sum1);
+                var random = Ins?.Random?.Next(0, sum1);
+                if (random == null)
+                {
+                    PrintDebug("Random is null");
+                    return null;
+                }
+                
                 var sum2 = 0;
                 for (var i = 0; i < data.Count; i++)
                 {
@@ -212,6 +223,8 @@ namespace Oxide.Plugins
                 }
             }
 
+            new GameObject().AddComponent<LootPlusController>();
+
             if (!_config.Enabled)
             {
                 PrintWarning("WARNING! Plugin is disabled in configuration");
@@ -225,9 +238,15 @@ namespace Oxide.Plugins
                 for (var i = 0; i < containersCount; i++)
                 {
                     var container = containers[i];
-                    LootHandler(container, false);
+//                    LootHandler(container, false);
+                    LootPlusController.Instance.RunCoroutine(LootHandler(container, true));
                 }
             });
+        }
+
+        private void Unload()
+        {
+            UnityEngine.Object.Destroy(LootPlusController.Instance);
         }
 
         private void OnLootSpawn(StorageContainer container)
@@ -235,7 +254,8 @@ namespace Oxide.Plugins
             if (!_config.Enabled)
                 return;
             
-            NextFrame(() => LootHandler(container, true));
+//            NextFrame(() => LootHandler(container, true));
+            NextFrame(() => LootPlusController.Instance.RunCoroutine(LootHandler(container, true)));
         }
 
         #endregion
@@ -248,10 +268,10 @@ namespace Oxide.Plugins
         
         #region Helpers
 
-        private void LootHandler(StorageContainer entity, bool debug)
+        private IEnumerator LootHandler(StorageContainer entity, bool debug)
         {
             if (entity == null)
-                return;
+                yield break;
 
             for (var i = 0; i < _config.Containers.Count; i++)
             {
@@ -284,8 +304,14 @@ namespace Oxide.Plugins
                 if (_config.ShuffleItems)
                     container.Items?.Shuffle();
 
+                var tries = 3;
                 while (entity.inventory.itemList.Count < entity.inventory.capacity)
                 {
+                    if (tries-- < 0)
+                        break;
+                    
+                    PrintDebug($"Count: {entity.inventory.itemList.Count} / {entity.inventory.capacity}");
+                    
                     var dataItem = ChanceData.Select(container.Items);
                     if (dataItem == null)
                     {
@@ -385,12 +411,27 @@ namespace Oxide.Plugins
                 Interface.Oxide.LogDebug(message);
         }
         
+        private class LootPlusController : FacepunchBehaviour
+        {
+            public static LootPlusController Instance;
+
+            private void Awake()
+            {
+                if (Instance != null)
+                    Destroy(Instance.gameObject);
+                
+                Instance = this;
+            }
+
+            public void RunCoroutine(IEnumerator coroutine)
+            {
+                StartCoroutine(coroutine);
+            }
+        }
+        
         #endregion
     }
-}
-
-namespace Oxide.Extensions
-{
+    
     public static class Extensions
     {
         public static void Shuffle<T>(this IList<T> list)
@@ -407,3 +448,7 @@ namespace Oxide.Extensions
         }
     }
 }
+
+//namespace Oxide.Extensions
+//{
+//}
