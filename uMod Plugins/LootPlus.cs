@@ -23,9 +23,9 @@ namespace Oxide.Plugins
         
         #region Configuration
 
-        public static Configuration _config;
+        private static Configuration _config;
 
-        public class Configuration
+        private class Configuration
         {
             [JsonProperty(PropertyName = "Plugin Enabled")]
             public bool Enabled = false;
@@ -49,7 +49,7 @@ namespace Oxide.Plugins
             public bool Debug = false;
         }
 
-        public class ContainerData
+        private class ContainerData
         {
             [JsonProperty(PropertyName = "Entity Shortname")]
             public string Shortname = "entity.shortname";
@@ -64,7 +64,7 @@ namespace Oxide.Plugins
             public List<ItemData> Items = new List<ItemData> {new ItemData()};
         }
 
-        public class ItemData : ChanceData
+        private class ItemData : ChanceData
         {
             [JsonProperty(PropertyName = "Item Shortname")]
             public string Shortname = "item.shortname";
@@ -87,26 +87,26 @@ namespace Oxide.Plugins
         
         #region Additional
 
-        public class ConditionData : ChanceData
+        private class ConditionData : ChanceData
         {
             [JsonProperty(PropertyName = "Condition")]
             public float Condition = 100f;
         }
 
-        public class SkinData : ChanceData
+        private class SkinData : ChanceData
         {
             [JsonProperty(PropertyName = "Skin")]
             // ReSharper disable once RedundantDefaultMemberInitializer
             public ulong Skin = 0;
         }
 
-        public class AmountData : ChanceData
+        private class AmountData : ChanceData
         {
             [JsonProperty(PropertyName = "Amount")]
             public int Amount = 3;
         }
 
-        public class CapacityData : ChanceData
+        private class CapacityData : ChanceData
         {
             [JsonProperty(PropertyName = "Capacity")]
             public int Capacity = 3;
@@ -115,7 +115,7 @@ namespace Oxide.Plugins
         public class ChanceData
         {
             [JsonProperty(PropertyName = "Chance")]
-            // ReSharper disable once MemberCanBePrivate.Local
+            // ReSharper disable once MemberCanBePrivate.Global
             public int Chance = 1;
             
             public static T Select<T>(IReadOnlyList<T> data) where T : ChanceData
@@ -393,7 +393,7 @@ namespace Oxide.Plugins
             }
         }
 
-        public static bool IsDuplicate(List<Item> list, ItemData dataItem, ulong skin)
+        private static bool IsDuplicate(IReadOnlyList<Item> list, ItemData dataItem, ulong skin)
         {
             for (var j = 0; j < list.Count; j++)
             {
