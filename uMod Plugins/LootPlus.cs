@@ -19,6 +19,7 @@ namespace Oxide.Plugins
 
         public Random Random = new Random();
 
+        // ReSharper disable once RedundantDefaultMemberInitializer
         private bool _initialized = false;
         
         #endregion
