@@ -18,6 +18,8 @@ namespace Oxide.Plugins
         public static LootPlus Ins;
 
         public Random Random = new Random();
+
+        private bool _initialized = false;
         
         #endregion
         
@@ -54,8 +56,17 @@ namespace Oxide.Plugins
             [JsonProperty(PropertyName = "Entity Shortname")]
             public string Shortname = "entity.shortname";
 
-            [JsonProperty(PropertyName = "Replace (true) / Add (false)")]
-            public bool ReplaceItems = false;
+            [JsonProperty(PropertyName = "Replace Items")]
+            public bool ReplaceItems = true;
+
+            [JsonProperty(PropertyName = "Add Items")]
+            public bool AddItems = false;
+
+            [JsonProperty(PropertyName = "Modify Items")]
+            public bool ModifyItems = false;
+
+            [JsonProperty(PropertyName = "Maximal Failures To Add An Item")]
+            public int MaxRetries = 5;
             
             [JsonProperty(PropertyName = "Capacity", ObjectCreationHandling = ObjectCreationHandling.Replace)]
             public List<CapacityData> Capacity = new List<CapacityData> {new CapacityData()};
@@ -128,6 +139,12 @@ namespace Oxide.Plugins
                     return null;
                 }
 
+                if (data.Count == 0)
+                {
+                    PrintDebug("Data is empty");
+                    return null;
+                }
+
                 var sum1 = 0;
                 for (var i = 0; i < data.Count; i++)
                 {
@@ -135,18 +152,28 @@ namespace Oxide.Plugins
                     sum1 += entry?.Chance ?? 0;
                 }
 
-                var random = Ins?.Random?.Next(0, sum1);
+                PrintDebug($"Sum: {sum1}");
+                if (sum1 < 1)
+                {
+                    PrintDebug("Sum is less than 1");
+                    return null;
+                }
+
+                var random = Ins?.Random?.Next(1, sum1 + 1); // include the sum1 number itself and exclude the 0
                 if (random == null)
                 {
                     PrintDebug("Random is null");
                     return null;
                 }
                 
+                PrintDebug($"Selected random: {random}");
+                
                 var sum2 = 0;
                 for (var i = 0; i < data.Count; i++)
                 {
                     var entry = data[i];
                     sum2 += entry?.Chance ?? 0;
+                    PrintDebug($"Current sum: {sum2}, random: {random}");
                     if (random <= sum2)
                         return entry;
                 }
@@ -183,6 +210,12 @@ namespace Oxide.Plugins
         #endregion
         
         #region Hooks
+
+        private void Init()
+        {
+            Ins = this;
+            new GameObject().AddComponent<LootPlusController>();
+        }
 
         private void OnServerInitialized()
         {
@@ -223,13 +256,14 @@ namespace Oxide.Plugins
                 }
             }
 
-            new GameObject().AddComponent<LootPlusController>();
-
             if (!_config.Enabled)
             {
                 PrintWarning("WARNING! Plugin is disabled in configuration");
+                Interface.Oxide.UnloadPlugin(Name);
                 return;
             }
+
+            _initialized = true;
 
             NextFrame(() =>
             {
@@ -238,8 +272,7 @@ namespace Oxide.Plugins
                 for (var i = 0; i < containersCount; i++)
                 {
                     var container = containers[i];
-//                    LootHandler(container, false);
-                    LootPlusController.Instance.RunCoroutine(LootHandler(container));
+                    LootPlusController.Instance.StartCoroutine(LootHandler(container));
                 }
             });
         }
@@ -247,22 +280,42 @@ namespace Oxide.Plugins
         private void Unload()
         {
             UnityEngine.Object.Destroy(LootPlusController.Instance);
+            
+            // LOOT IS BACK
+            var containers = UnityEngine.Object.FindObjectsOfType<LootContainer>();
+            var containersCount = containers.Length;
+            for (var i = 0; i < containersCount; i++)
+            {
+                var container = containers[i];
+                container.CreateInventory(true);
+                container.SpawnLoot();
+            }
         }
 
         private void OnLootSpawn(StorageContainer container)
         {
-            if (!_config.Enabled)
+            if (!_initialized)
                 return;
             
-//            NextFrame(() => LootHandler(container, true));
-            NextFrame(() => LootPlusController.Instance.RunCoroutine(LootHandler(container)));
+            NextFrame(() => LootPlusController.Instance.StartCoroutine(LootHandler(container)));
         }
 
         #endregion
         
         #region Controller
         
-        
+        private class LootPlusController : FacepunchBehaviour
+        {
+            public static LootPlusController Instance;
+
+            private void Awake()
+            {
+                if (Instance != null)
+                    Destroy(Instance.gameObject);
+                
+                Instance = this;
+            }
+        }
         
         #endregion
         
@@ -279,58 +332,178 @@ namespace Oxide.Plugins
                 if (container.Shortname != entity.ShortPrefabName)
                     continue;
 
-                PrintDebug(
-                    $"Handling container {entity.ShortPrefabName} ({entity.net.ID} @ {entity.transform.position})");
+                HandleContainer(entity, container);
+            }
+        }
 
-                var dataCapacity = ChanceData.Select(container.Capacity);
-                if (dataCapacity == null)
+        private void HandleContainer(StorageContainer entity, ContainerData container)
+        {
+            PrintDebug(
+                $"Handling container {entity.ShortPrefabName} ({entity.net.ID} @ {entity.transform.position})");
+
+            if (_config.ShuffleItems && !container.ModifyItems) // No need to shuffle for items modification
+                container.Items?.Shuffle();
+
+            entity.inventory.capacity = entity.inventory.itemList.Count;
+            HandleInventory(entity.inventory, container);
+        }
+
+        private void HandleInventory(ItemContainer inventory, ContainerData container)
+        {
+            var dataCapacity = ChanceData.Select(container.Capacity);
+            if (dataCapacity == null)
+            {
+                PrintDebug("Could not select a correct capacity");
+                return;
+            }
+            
+            PrintDebug($"Items: {inventory.itemList.Count} / {inventory.capacity}");
+
+            if (!((container.AddItems || container.ReplaceItems) ^ container.ModifyItems))
+            {
+                PrintWarning("Multiple options (Add / Replace / Modify) are selected");
+                return;
+            }
+
+            if (container.ReplaceItems)
+            {
+                inventory.Clear();
+                ItemManager.DoRemoves();
+                inventory.capacity = dataCapacity.Capacity;
+                HandleInventoryAddReplace(inventory, container);
+                return;
+            }
+            
+            if (container.AddItems)
+            {
+                inventory.capacity += dataCapacity.Capacity;
+                HandleInventoryAddReplace(inventory, container);
+                return;
+            }
+
+            if (container.ModifyItems)
+            {
+                HandleInventoryModify(inventory, container);
+            }
+        }
+
+        private static void HandleInventoryAddReplace(ItemContainer inventory, ContainerData container)
+        {
+            PrintDebug("Using add or replace");
+            
+            var failures = 0;
+            while (inventory.itemList.Count < inventory.capacity)
+            {
+                PrintDebug($"Count: {inventory.itemList.Count} / {inventory.capacity}");
+
+                var dataItem = ChanceData.Select(container.Items);
+                if (dataItem == null)
                 {
-                    PrintDebug("Could not select a correct capacity");
+                    PrintDebug("Could not select a correct item");
                     continue;
                 }
 
-                if (container.ReplaceItems)
-                {
-                    entity.inventory.Clear();
-                    ItemManager.DoRemoves();
-                    entity.inventory.capacity = dataCapacity.Capacity;
-                }
-                else
-                {
-                    entity.inventory.capacity += dataCapacity.Capacity;
-                }
+                PrintDebug($"Handling item {dataItem.Shortname} (Blueprint: {dataItem.IsBlueprint} / Stacking: {dataItem.AllowStacking})");
 
-                if (_config.ShuffleItems)
-                    container.Items?.Shuffle();
-                
-                PrintDebug($"Filling up with items.. ({entity.inventory.itemList.Count} / {entity.inventory.capacity})");
+                var skin = ChanceData.Select(dataItem.Skins)?.Skin ?? 0UL;
 
-                while (entity.inventory.itemList.Count < entity.inventory.capacity)
+                if (!_config.DuplicateItems) // Duplicate items are not allowed
                 {
-                    PrintDebug($"Count: {entity.inventory.itemList.Count} / {entity.inventory.capacity}");
+                    PrintDebug("Searching for duplicates..");
 
-                    var dataItem = ChanceData.Select(container.Items);
-                    if (dataItem == null)
+                    if (IsDuplicate(inventory.itemList, dataItem, skin))
                     {
-                        PrintDebug("Could not select a correct item");
+                        if (++failures > container.MaxRetries)
+                        {
+                            PrintDebug("Too many failures");
+                            break;
+                        }
+
                         continue;
                     }
 
-                    PrintDebug($"Handling item {dataItem.Shortname}");
+                    PrintDebug("No duplicates");
+                }
 
-                    var skin = ChanceData.Select(dataItem.Skins)?.Skin ?? 0UL;
+                var dataAmount = ChanceData.Select(dataItem.Amount);
+                if (dataAmount == null)
+                {
+                    PrintDebug("Could not select a correct amount");
+                    continue;
+                }
 
-                    if (!_config.DuplicateItems) // Duplicate items are not allowed
+                PrintDebug($"Selected amount: {dataAmount.Amount}");
+
+                var definition =
+                    ItemManager.FindItemDefinition(dataItem.IsBlueprint ? "blueprintbase" : dataItem.Shortname);
+                if (definition == null)
+                {
+                    PrintDebug("Could not find an item definition");
+                    continue;
+                }
+
+                var createdItem = ItemManager.Create(definition, dataAmount.Amount, skin);
+                if (createdItem == null)
+                {
+                    PrintDebug("Could not create an item");
+                    continue;
+                }
+
+                if (dataItem.IsBlueprint)
+                {
+                    createdItem.blueprintTarget = ItemManager.FindItemDefinition(dataItem.Shortname).itemid;
+                }
+                else
+                {
+                    PrintDebug("Setting up condition..");
+
+                    var dataCondition = ChanceData.Select(dataItem.Conditions);
+                    if (createdItem.hasCondition)
                     {
-                        PrintDebug("Searching for duplicates..");
-
-                        if (IsDuplicate(entity.inventory.itemList, dataItem, skin))
+                        if (dataCondition == null)
                         {
-                            continue;
+                            PrintDebug("Could not select a correct condition");
                         }
-                        
-                        PrintDebug("No duplicates");
+                        else
+                        {
+                            PrintDebug($"Selected condition: {dataCondition.Condition}");
+                            createdItem.condition = dataCondition.Condition;
+                        }
                     }
+                    else if (dataCondition != null)
+                    {
+                        PrintDebug("Configurated item has a condition but item doesn't have condition");
+                    }
+                }
+
+                PrintDebug("Moving item to container..");
+
+                var moved = createdItem.MoveToContainer(inventory, allowStack: dataItem.AllowStacking);
+                if (moved) continue;
+
+                PrintDebug("Could not move item to a container");
+            }
+        }
+
+        private static void HandleInventoryModify(ItemContainer inventory, ContainerData container)
+        {
+            PrintDebug("Using modify");
+            
+            for (var i = 0; i < inventory.itemList.Count; i++)
+            {
+                var item = inventory.itemList[i];
+                for (var j = 0; j < container.Items.Count; j++)
+                {
+                    var dataItem = container.Items[j];
+                    if (dataItem.Shortname != item.info.shortname)
+                        continue;
+
+                    PrintDebug(
+                        $"Handling item {dataItem.Shortname} (Blueprint: {dataItem.IsBlueprint} / Stacking: {dataItem.AllowStacking})");
+
+                    var skin = ChanceData.Select(dataItem.Skins)?.Skin;
+                    if (skin.HasValue)
+                        item.skin = skin.Value;
 
                     var dataAmount = ChanceData.Select(dataItem.Amount);
                     if (dataAmount == null)
@@ -338,57 +511,30 @@ namespace Oxide.Plugins
                         PrintDebug("Could not select a correct amount");
                         continue;
                     }
-                    
+
                     PrintDebug($"Selected amount: {dataAmount.Amount}");
 
-                    var definition =
-                        ItemManager.FindItemDefinition(dataItem.IsBlueprint ? "blueprintbase" : dataItem.Shortname);
-                    if (definition == null)
-                    {
-                        PrintDebug("Could not find an item definition");
-                        continue;
-                    }
-
-                    var createdItem = ItemManager.Create(definition, dataAmount.Amount, skin);
-                    if (createdItem == null)
-                    {
-                        PrintDebug("Could not create an item");
-                        continue;
-                    }
-
-                    if (dataItem.IsBlueprint)
-                    {
-                        createdItem.blueprintTarget = ItemManager.FindItemDefinition(dataItem.Shortname).itemid;
-                    }
-                    else
-                    {
-                        PrintDebug("Setting up condition..");
-                        
-                        var dataCondition = ChanceData.Select(dataItem.Conditions);
-                        if (createdItem.hasCondition)
-                        {
-                            if (dataCondition == null)
-                            {
-                                PrintDebug("Could not select a correct condition");
-                            }
-                            else
-                            {
-                                PrintDebug($"Selected condition: {dataCondition.Condition}");
-                                createdItem.condition = dataCondition.Condition;
-                            }
-                        }
-                        else if (dataCondition != null)
-                        {
-                            PrintDebug("Configurated item has a condition but item doesn't have condition");
-                        }
-                    }
-
-                    PrintDebug("Moving item to container..");
+                    item.amount = dataAmount.Amount;
                     
-                    var moved = createdItem.MoveToContainer(entity.inventory, allowStack: dataItem.AllowStacking);
-                    if (moved) continue;
+                    PrintDebug("Setting up condition..");
 
-                    PrintDebug("Could not move item to a container");
+                    var dataCondition = ChanceData.Select(dataItem.Conditions);
+                    if (item.hasCondition)
+                    {
+                        if (dataCondition == null)
+                        {
+                            PrintDebug("Could not select a correct condition");
+                        }
+                        else
+                        {
+                            PrintDebug($"Selected condition: {dataCondition.Condition}");
+                            item.condition = dataCondition.Condition;
+                        }
+                    }
+                    else if (dataCondition != null)
+                    {
+                        PrintDebug("Configurated item has a condition but item doesn't have condition");
+                    }
                 }
             }
         }
@@ -397,83 +543,30 @@ namespace Oxide.Plugins
         {
             for (var j = 0; j < list.Count; j++)
             {
-                // This could be a huge one line
-                // But it'd be very complicated then, so no.
-                            
                 var item = list[j];
-                if (item.IsBlueprint() && dataItem.IsBlueprint &&
-                    item.blueprintTargetDef.shortname == dataItem.Shortname)
+                if (dataItem.IsBlueprint)
                 {
+                    if (!item.IsBlueprint() || item.blueprintTargetDef.shortname != dataItem.Shortname) continue;
+
                     PrintDebug("Found a duplicate blueprint");
                     return true;
                 }
 
-                // ReSharper disable once InvertIf
-                if (item.info.shortname == dataItem.Shortname)
-                {
-                    if (_config.DuplicateItemsDifferentSkins && item.skin != skin)
-                        continue;
+                if (item.info.shortname != dataItem.Shortname) continue;
+                if (_config.DuplicateItemsDifferentSkins && item.skin != skin)
+                    continue;
 
-                    PrintDebug("Found a duplicate");
-                    return true;
-                }
+                PrintDebug("Found a duplicate");
+                return true;
             }
 
             return false;
         }
 
-//        public bool CanBeFilled(IEnumerable<Item> list, List<ItemData> items, int capacity)
-//        {
-//            var newList = new List<Item>(list);
-//            for (var i = 0; i < items.Count; i++)
-//            {
-//                var item = items[i];
-//                for (var j = 0; j < item.Amount.Count; j++)
-//                {
-//                    var amount = item.Amount[j].Amount;
-//                    
-//                    if (_config.DuplicateItemsDifferentSkins)
-//                    {
-//                        for (var k = 0; k < item.Skins.Count; k++)
-//                        {
-//                            var skin = item.Skins[k];
-//                            if (!IsDuplicate(newList, item, skin.Skin))
-//                                newList.Add(ItemManager.CreateByName(item.Shortname, amount, skin.Skin));
-//                        }
-//                    }
-//                    else
-//                    {
-//                        if (!IsDuplicate(newList, item, 0))
-//                            newList.Add(ItemManager.CreateByName(item.Shortname, amount));
-//                    }
-//                }
-//            }
-//            
-//            return 
-//        }
-
         private static void PrintDebug(string message)
         {
             if (_config.Debug)
                 Interface.Oxide.LogDebug(message);
-        }
-        
-        private class LootPlusController : FacepunchBehaviour
-        {
-            public static LootPlusController Instance;
-
-            private void Awake()
-            {
-                if (Instance != null)
-                    Destroy(Instance.gameObject);
-                
-                Instance = this;
-            }
-
-            public void RunCoroutine(IEnumerator coroutine)
-            {
-                StartCoroutine(coroutine);
-            }
         }
         
         #endregion
@@ -495,7 +588,3 @@ namespace Oxide.Plugins
         }
     }
 }
-
-//namespace Oxide.Extensions
-//{
-//}
