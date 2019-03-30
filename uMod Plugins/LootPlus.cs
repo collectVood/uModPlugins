@@ -9,7 +9,7 @@ using Random = System.Random;
 
 namespace Oxide.Plugins
 {
-    [Info("Loot Plus", "Iv Misticos", "2.0.0")]
+    [Info("Loot Plus", "Iv Misticos", "2.0.1")]
     [Description("Modify loot on your server.")]
     public class LootPlus : RustPlugin
     {
@@ -80,6 +80,9 @@ namespace Oxide.Plugins
         {
             [JsonProperty(PropertyName = "Item Shortname")]
             public string Shortname = "item.shortname";
+
+            [JsonProperty(PropertyName = "Item Name (Empty To Ignore)")]
+            public string Name = "";
 
             [JsonProperty(PropertyName = "Is Blueprint")]
             public bool IsBlueprint = false;
@@ -330,7 +333,7 @@ namespace Oxide.Plugins
             for (var i = 0; i < _config.Containers.Count; i++)
             {
                 var container = _config.Containers[i];
-                if (container.Shortname != entity.ShortPrefabName)
+                if (container.Shortname != "global" && container.Shortname != entity.ShortPrefabName)
                     continue;
 
                 HandleContainer(entity, container);
@@ -477,6 +480,9 @@ namespace Oxide.Plugins
                     }
                 }
 
+                if (!string.IsNullOrEmpty(dataItem.Name))
+                    createdItem.name = dataItem.Name;
+
                 PrintDebug("Moving item to container..");
 
                 var moved = createdItem.MoveToContainer(inventory, allowStack: dataItem.AllowStacking);
@@ -536,6 +542,9 @@ namespace Oxide.Plugins
                     {
                         PrintDebug("Configurated item has a condition but item doesn't have condition");
                     }
+
+                    if (!string.IsNullOrEmpty(dataItem.Name))
+                        item.name = dataItem.Name;
                 }
             }
         }
