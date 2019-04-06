@@ -1,4 +1,4 @@
-using ConVar;
+﻿using ConVar;
 using Facepunch.Math;
 using UnityEngine;
 
@@ -8,6 +8,12 @@ namespace Oxide.Plugins
     [Description("No Green Admin")]
     class NoGreen : RustPlugin
     {
+        private void Loaded()
+        {
+            if (plugins.Find("Better Chat") == null)
+                return;
+        }
+        
         private object OnPlayerChat(ConsoleSystem.Arg arg)
         {
             var player = (BasePlayer)arg.Connection.player;
