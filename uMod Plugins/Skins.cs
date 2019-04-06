@@ -1,9 +1,10 @@
 ﻿using System;
-using UnityEngine;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 using Newtonsoft.Json;
 using Oxide.Core;
+using UnityEngine;
 
 namespace Oxide.Plugins
 {
@@ -12,7 +13,7 @@ namespace Oxide.Plugins
     class Skins : RustPlugin
     {
         private const string BoxPrefab = "assets/prefabs/deployable/large wood storage/box.wooden.large.prefab";
-        private HashSet<StorageContainer> _boxes = new HashSet<StorageContainer>();
+        private static List<ContainerController> _boxes = new List<ContainerController>();
 
         private const string PermissionUse = "skins.use";
         private const string PermissionAdmin = "skins.admin";
@@ -26,7 +27,7 @@ namespace Oxide.Plugins
             [JsonProperty(PropertyName = "Chat Command")]
             public string CommandChat = "skin";
             
-            [JsonProperty(PropertyName = "")]
+            [JsonProperty(PropertyName = "")] // no idea what it was
             public bool DefaultSkins = false;
             
             [JsonProperty(PropertyName = "Custom Skins")]
@@ -88,45 +89,55 @@ namespace Oxide.Plugins
             }
         }
 
+        private void OnPlayerInit(BasePlayer player)
+        {
+            
+        }
+
+        private void OnPlayerDisconnected(BasePlayer player)
+        {
+            
+        }
+
         private void OnEntityTakeDamage(BaseNetworkable entity, HitInfo info)
         {
-            if(_boxes.Contains(entity))
-            {
-                // Remove damage from our containers
-                info.damageTypes.ScaleAll(0);
-            }
+            if (ContainerController.FindIndex(entity as StorageContainer) == -1)
+                return;
+
+            // Remove damage from our containers
+            info.damageTypes.ScaleAll(0);
         }
 
         #region Working With Containers
 
         private void OnItemAddedToContainer(ItemContainer container, Item item)
         {
-            
+            // TODO
         }
 
         private object CanMoveItem(Item item, PlayerInventory playerLoot, uint targetContainer, int targetSlot)
         {
-            
+            // TODO
         }
 
         private object CanAcceptItem(ItemContainer container, Item item)
         {
-            
+            // TODO
         }
 
         private void OnItemSplit(Item item, int amount)
         {
-            
+            // TODO
         }
 
         private void OnItemRemovedFromContainer(ItemContainer container, Item item)
         {
-            
+            // TODO
         }
 
         private void OnLootEntityEnd(BasePlayer player, BaseCombatEntity entity)
         {
-            
+            // TODO
         }
 
         #endregion
@@ -134,7 +145,7 @@ namespace Oxide.Plugins
         private object CanNetworkTo(BaseNetworkable entity, BasePlayer target)
         {
             // You won't see our containers
-            if (_boxes.Contains(entity))
+            if (ContainerController.FindIndex(entity as StorageContainer) != -1)
                 return false;
             
             return null;
@@ -146,12 +157,75 @@ namespace Oxide.Plugins
 
         private void CommandWorkshopLoad(ConsoleSystem.Arg arg)
         {
-            
+            // TODO
         }
 
         private void CommandSkin(BasePlayer player)
         {
+            // TODO
+        }
+        
+        #endregion
+        
+        #region Controller
+
+        private class ContainerController : MonoBehaviour
+        {
+            public BasePlayer owner;
+            public StorageContainer container;
+
+            private void Awake()
+            {
+                container = GameManager.server.CreateEntity(BoxPrefab) as StorageContainer;
+                if (container == null)
+                    return; // Just a useless check, it shouldn't be null :)
+                
+                container.Spawn(); // Spawning it, YES!
+            }
+
+            #region Search
+
+            // ReSharper disable once SuggestBaseTypeForParameter
+            public static int FindIndex(BasePlayer player)
+            {
+                for (var i = 0; i < _boxes.Count; i++)
+                {
+                    if (_boxes[i].owner == player)
+                    {
+                        return i;
+                    }
+                }
+
+                return -1;
+            }
+
+            public static ContainerController Find(BasePlayer player)
+            {
+                var index = FindIndex(player);
+                return index == -1 ? null : _boxes[index];
+            }
+
+            // ReSharper disable once SuggestBaseTypeForParameter
+            public static int FindIndex(StorageContainer container)
+            {
+                for (var i = 0; i < _boxes.Count; i++)
+                {
+                    if (_boxes[i].container == container)
+                    {
+                        return i;
+                    }
+                }
+
+                return -1;
+            }
+
+            public static ContainerController Find(StorageContainer container)
+            {
+                var index = FindIndex(container);
+                return index == -1 ? null : _boxes[index];
+            }
             
+            #endregion
         }
         
         #endregion
@@ -161,18 +235,6 @@ namespace Oxide.Plugins
         private bool CanUse(ulong id) => permission.UserHasPermission(id.ToString(), PermissionUse);
 
         private bool CanUseAdmin(ulong id) => permission.UserHasPermission(id.ToString(), PermissionAdmin);
-
-        private StorageContainer GetContainer()
-        {
-            var container = GameManager.server.CreateEntity(BoxPrefab) as StorageContainer;
-            if (container == null)
-                return null;
-
-            _boxes.Add(container);
-            container.Spawn();
-            
-            return container;
-        }
 
         #endregion
     }
