@@ -181,7 +181,7 @@ namespace Oxide.Plugins
                     return; // Just a useless check, it shouldn't be null :)
                 
                 container.Spawn(); // Spawning it, YES!
-            }
+            }    
 
             #region Search
 
