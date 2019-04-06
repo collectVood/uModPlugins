@@ -9,7 +9,7 @@ using Random = System.Random;
 
 namespace Oxide.Plugins
 {
-    [Info("Loot Plus", "Iv Misticos", "2.0.1")]
+    [Info("Loot Plus", "Iv Misticos", "2.0.2")]
     [Description("Modify loot on your server.")]
     public class LootPlus : RustPlugin
     {
@@ -119,6 +119,9 @@ namespace Oxide.Plugins
         {
             [JsonProperty(PropertyName = "Amount")]
             public int Amount = 3;
+            
+            [JsonProperty(PropertyName = "Rate")]
+            public float Rate = -1f;
         }
 
         private class CapacityData : ChanceData
@@ -215,16 +218,11 @@ namespace Oxide.Plugins
         
         #region Hooks
 
-        private void Init()
-        {
-            Ins = this;
-            new GameObject().AddComponent<LootPlusController>();
-        }
-
         private void OnServerInitialized()
         {
             Ins = this;
 
+            // Converting old configuration
             if (_config.Skins != null)
             {
                 foreach (var kvp in _config.Skins)
@@ -283,7 +281,8 @@ namespace Oxide.Plugins
 
         private void Unload()
         {
-            UnityEngine.Object.Destroy(LootPlusController.Instance);
+            LootPlusController.TryDestroy();
+            _initialized = false;
             
             // LOOT IS BACK
             var containers = UnityEngine.Object.FindObjectsOfType<LootContainer>();
@@ -291,8 +290,15 @@ namespace Oxide.Plugins
             for (var i = 0; i < containersCount; i++)
             {
                 var container = containers[i];
+                
+                // Creating an inventory
                 container.CreateInventory(true);
+                
+                // Spawning loot
                 container.SpawnLoot();
+                
+                // Changing the capacity
+                container.inventory.capacity = container.inventory.itemList.Count;
             }
         }
 
@@ -310,14 +316,20 @@ namespace Oxide.Plugins
         
         private class LootPlusController : FacepunchBehaviour
         {
-            public static LootPlusController Instance;
+            private static LootPlusController _instance;
+
+            public static LootPlusController Instance => _instance ? _instance : new GameObject().AddComponent<LootPlusController>();
 
             private void Awake()
             {
-                if (Instance != null)
-                    Destroy(Instance.gameObject);
-                
-                Instance = this;
+                TryDestroy();
+                _instance = this;
+            }
+
+            public static void TryDestroy()
+            {
+                if (_instance)
+                    Destroy(_instance.gameObject);
             }
         }
         
@@ -436,7 +448,14 @@ namespace Oxide.Plugins
                     continue;
                 }
 
-                PrintDebug($"Selected amount: {dataAmount.Amount}");
+                var amount = 1;
+                if (dataAmount.Amount > 0)
+                    amount = dataAmount.Amount;
+
+                if (dataAmount.Rate > 0f)
+                    amount = (int) (dataAmount.Rate * amount);
+                
+                PrintDebug($"Selected amount: {amount} (Amount: {dataAmount.Amount} / Rate: {dataAmount.Rate})");
 
                 var definition =
                     ItemManager.FindItemDefinition(dataItem.IsBlueprint ? "blueprintbase" : dataItem.Shortname);
@@ -446,7 +465,7 @@ namespace Oxide.Plugins
                     continue;
                 }
 
-                var createdItem = ItemManager.Create(definition, dataAmount.Amount, skin);
+                var createdItem = ItemManager.Create(definition, amount, skin);
                 if (createdItem == null)
                 {
                     PrintDebug("Could not create an item");
@@ -519,9 +538,16 @@ namespace Oxide.Plugins
                         continue;
                     }
 
-                    PrintDebug($"Selected amount: {dataAmount.Amount}");
+                    var amount = item.amount;
+                    if (dataAmount.Amount > 0)
+                        amount = dataAmount.Amount;
 
-                    item.amount = dataAmount.Amount;
+                    if (dataAmount.Rate > 0f)
+                        amount = (int) (dataAmount.Rate * amount);
+                    
+                    PrintDebug($"Selected amount: {amount} (Amount: {dataAmount.Amount} / Rate: {dataAmount.Rate})");
+
+                    item.amount = amount;
                     
                     PrintDebug("Setting up condition..");
 

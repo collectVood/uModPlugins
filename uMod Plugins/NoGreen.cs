@@ -1,16 +1,17 @@
-﻿using ConVar;
+using ConVar;
 using Facepunch.Math;
+using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("No Green", "JakeKillsAll & Iv Misticos", "1.3.0")]
+    [Info("No Green", "Iv Misticos", "1.3.1")]
     [Description("No Green Admin")]
     class NoGreen : RustPlugin
     {
         private object OnPlayerChat(ConsoleSystem.Arg arg)
         {
             var player = (BasePlayer)arg.Connection.player;
-            var message = Chat.EscapeRichText(arg.GetString(0));
+            var message = arg.GetString(0).EscapeRichText(); // That's what devs use
             var color = "#5af";
             
             rust.BroadcastChat($"<color={color}>{player.displayName}</color>", message, player.UserIDString);
