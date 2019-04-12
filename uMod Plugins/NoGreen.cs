@@ -1,26 +1,29 @@
-﻿using ConVar;
+using ConVar;
 using Facepunch.Math;
 using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("No Green", "Iv Misticos", "1.3.1")]
-    [Description("No Green Admin")]
+    [Info("No Green", "Iv Misticos", "1.3.3")]
+    [Description("Remove admins' green names")]
     class NoGreen : RustPlugin
     {
-        private void Loaded()
-        {
-            if (plugins.Find("Better Chat") == null)
-                return;
-        }
-        
         private object OnPlayerChat(ConsoleSystem.Arg arg)
         {
             var player = (BasePlayer)arg.Connection.player;
+            if (player == null || !player.IsAdmin)
+                return null;
+            
             var message = arg.GetString(0).EscapeRichText(); // That's what devs use
+            var name = player.displayName.EscapeRichText();
             var color = "#5af";
             
-            rust.BroadcastChat($"<color={color}>{player.displayName}</color>", message, player.UserIDString);
+            if (Chat.serverlog)
+            {
+                DebugEx.Log($"[CHAT] {player} : {message}", StackTraceLogType.None);
+            }
+            
+            Server.Broadcast(message, name, player.userID);
             
             player.NextChatTime = UnityEngine.Time.realtimeSinceStartup + 1.5f;
             
@@ -28,7 +31,7 @@ namespace Oxide.Plugins
             {
                 Message = message,
                 UserId = player.userID,
-                Username = player.displayName,
+                Username = name,
                 Color = color,
                 Time = Epoch.Current
             };

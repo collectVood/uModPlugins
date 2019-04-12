@@ -23,7 +23,7 @@ namespace Oxide.Plugins
 
         private static Configuration _config;
 
-        public class Configuration
+        private class Configuration
         {
             [JsonProperty(PropertyName = "Incorrect Crafts To Block")]
             public int IncorrectNeeded = 10;

@@ -5,6 +5,7 @@ using System.Linq;
 using Newtonsoft.Json;
 using Oxide.Core;
 using UnityEngine;
+using Component = UnityEngine.Component;
 
 namespace Oxide.Plugins
 {
@@ -83,29 +84,39 @@ namespace Oxide.Plugins
 
         private void Unload()
         {
-            foreach (var container in _boxes)
+            for (var i = _boxes.Count - 1; i >= 0; i--)
             {
-                // TODO
+                var container = _boxes[i];
+                OnPlayerDisconnected(container.owner);
             }
         }
 
-        private void OnPlayerInit(BasePlayer player)
+        private void OnPlayerInit(Component player)
         {
-            
+            var container = player.gameObject.AddComponent<ContainerController>();
+            _boxes.Add(container); // lol
         }
 
         private void OnPlayerDisconnected(BasePlayer player)
         {
-            
+            var index = ContainerController.FindIndex(player);
+            UnityEngine.Object.Destroy(_boxes[index]);
+            _boxes.RemoveAt(index);
         }
 
         private void OnEntityTakeDamage(BaseNetworkable entity, HitInfo info)
         {
-            if (ContainerController.FindIndex(entity as StorageContainer) == -1)
+            if (!(entity is StorageContainer) || ContainerController.FindIndex(entity as StorageContainer) == -1)
                 return;
 
             // Remove damage from our containers
             info.damageTypes.ScaleAll(0);
+        }
+
+        private void OnEntityDeath(BaseNetworkable entity, HitInfo info)
+        {
+            // Same as in OnEntityTakeDamage
+            OnEntityTakeDamage(entity, info);
         }
 
         #region Working With Containers
@@ -226,6 +237,11 @@ namespace Oxide.Plugins
             }
             
             #endregion
+
+            public void Show(BasePlayer player)
+            {
+                
+            }
         }
         
         #endregion
