@@ -173,7 +173,13 @@ namespace Oxide.Plugins
 
         private void CommandSkin(BasePlayer player)
         {
-            // TODO
+            if (!CanUse(player.userID))
+            {
+                // TODO: Message
+                return;
+            }
+
+            ContainerController.Find(player).Show();
         }
         
         #endregion
@@ -238,7 +244,7 @@ namespace Oxide.Plugins
             
             #endregion
 
-            public void Show(BasePlayer player)
+            public void Show()
             {
                 
             }
