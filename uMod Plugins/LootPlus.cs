@@ -3,13 +3,13 @@ using System.Collections;
 using System.Collections.Generic;
 using Newtonsoft.Json;
 using Oxide.Core;
+using Oxide.Core.Libraries.Covalence;
 using UnityEngine;
 using Random = System.Random;
-//using Oxide.Extensions;
 
 namespace Oxide.Plugins
 {
-    [Info("Loot Plus", "Iv Misticos", "2.0.2")]
+    [Info("Loot Plus", "Iv Misticos", "2.0.3")]
     [Description("Modify loot on your server.")]
     public class LootPlus : RustPlugin
     {
@@ -19,8 +19,9 @@ namespace Oxide.Plugins
 
         public Random Random = new Random();
 
-        // ReSharper disable once RedundantDefaultMemberInitializer
         private bool _initialized = false;
+
+        private const string PermissionLootSave = "lootplus.lootsave";
         
         #endregion
         
@@ -32,6 +33,9 @@ namespace Oxide.Plugins
         {
             [JsonProperty(PropertyName = "Plugin Enabled")]
             public bool Enabled = false;
+            
+            [JsonProperty(PropertyName = "Container Loot Save Command")]
+            public string LootSaveCommand = "lootsave";
             
             [JsonProperty(PropertyName = "Loot Skins", NullValueHandling = NullValueHandling.Ignore)]
             public Dictionary<string, Dictionary<string, ulong>> Skins = null; // OLD
@@ -216,11 +220,117 @@ namespace Oxide.Plugins
 
         #endregion
         
+        #region Commands
+
+        private void CommandLootSave(IPlayer iplayer, string command, string[] args)
+        {
+            var player = iplayer.Object as BasePlayer;
+            if (player == null)
+            {
+                iplayer.Reply(GetMsg("In-Game Only", iplayer.Id));
+                return;
+            }
+
+            if (!iplayer.HasPermission(PermissionLootSave))
+            {
+                iplayer.Reply(GetMsg("No Permission", iplayer.Id));
+                return;
+            }
+
+            RaycastHit hit;
+            if (!Physics.Raycast(player.eyes.HeadRay(), out hit, 10f) || hit.GetEntity() == null ||
+                !(hit.GetEntity() is LootContainer))
+            {
+                iplayer.Reply(GetMsg("No Loot Container", iplayer.Id));
+                return;
+            }
+
+            var container = hit.GetEntity() as LootContainer;
+            if (container == null || container.inventory == null)
+            {
+                // Shouldn't really happen
+                return;
+            }
+
+            var containerData = new ContainerData
+            {
+                ModifyItems = false,
+                AddItems = false,
+                ReplaceItems = true,
+                Shortname = container.ShortPrefabName,
+                Capacity = new List<CapacityData>
+                {
+                    new CapacityData
+                    {
+                        Capacity = container.inventory.itemList.Count
+                    }
+                },
+                Items = new List<ItemData>()
+            };
+
+            foreach (var item in container.inventory.itemList)
+            {
+                var isBlueprint = item.IsBlueprint();
+                var itemData = new ItemData
+                {
+                    Amount = new List<AmountData>
+                    {
+                        new AmountData
+                        {
+                            Amount = item.amount
+                        }
+                    },
+                    Conditions = new List<ConditionData>(),
+                    Skins = new List<SkinData>
+                    {
+                        new SkinData
+                        {
+                            Skin = item.skin
+                        }
+                    },
+                    Shortname = isBlueprint ? item.blueprintTargetDef.shortname : item.info.shortname,
+                    Name = item.name,
+                    AllowStacking = true,
+                    IsBlueprint = isBlueprint
+                };
+
+                if (!isBlueprint)
+                {
+                    if (item.hasCondition)
+                        itemData.Conditions.Add(new ConditionData
+                        {
+                            Condition = item.condition
+                        });
+                }
+
+                containerData.Items.Add(itemData);
+            }
+
+            _config.Containers.Add(containerData);
+            SaveConfig();
+            iplayer.Reply(GetMsg("Loot Container Saved", iplayer.Id));
+        }
+
+        #endregion
+        
         #region Hooks
+
+        protected override void LoadDefaultMessages()
+        {
+            lang.RegisterMessages(new Dictionary<string, string>
+            {
+                {"In-Game Only", "Please, use this only while you're in the game"},
+                {"No Permission", "You don't have enough permissions"},
+                {"No Loot Container", "Please, look at the loot container in 10m"},
+                {"Loot Container Saved", "You have saved this loot container data to configuration"}
+            }, this);
+        }
 
         private void OnServerInitialized()
         {
             Ins = this;
+            
+            permission.RegisterPermission(PermissionLootSave, this);
 
             // Converting old configuration
             if (_config.Skins != null)
@@ -264,6 +374,8 @@ namespace Oxide.Plugins
                 Interface.Oxide.UnloadPlugin(Name);
                 return;
             }
+
+            AddCovalenceCommand(_config.LootSaveCommand, nameof(CommandLootSave));
 
             _initialized = true;
 
@@ -521,7 +633,8 @@ namespace Oxide.Plugins
                 for (var j = 0; j < container.Items.Count; j++)
                 {
                     var dataItem = container.Items[j];
-                    if (dataItem.Shortname != item.info.shortname)
+                    if (dataItem.Shortname != "global" && dataItem.Shortname != item.info.shortname ||
+                        dataItem.IsBlueprint != item.IsBlueprint())
                         continue;
 
                     PrintDebug(
@@ -598,6 +711,8 @@ namespace Oxide.Plugins
 
             return false;
         }
+
+        private string GetMsg(string key, string userId) => lang.GetMessage(key, this, userId);
 
         private static void PrintDebug(string message)
         {
