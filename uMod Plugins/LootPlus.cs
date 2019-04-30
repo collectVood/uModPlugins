@@ -23,6 +23,8 @@ namespace Oxide.Plugins
 
         private const string PermissionLootSave = "lootplus.lootsave";
         
+        private const string PermissionLootRefill = "lootplus.lootrefill";
+        
         #endregion
         
         #region Configuration
@@ -36,6 +38,9 @@ namespace Oxide.Plugins
             
             [JsonProperty(PropertyName = "Container Loot Save Command")]
             public string LootSaveCommand = "lootsave";
+            
+            [JsonProperty(PropertyName = "Container Refill Command")]
+            public string LootRefillCommand = "lootrefill";
             
             [JsonProperty(PropertyName = "Loot Skins", NullValueHandling = NullValueHandling.Ignore)]
             public Dictionary<string, Dictionary<string, ulong>> Skins = null; // OLD
@@ -252,6 +257,8 @@ namespace Oxide.Plugins
                 return;
             }
 
+            var inventory = player.inventory.containerMain;
+
             var containerData = new ContainerData
             {
                 ModifyItems = false,
@@ -262,13 +269,13 @@ namespace Oxide.Plugins
                 {
                     new CapacityData
                     {
-                        Capacity = container.inventory.itemList.Count
+                        Capacity = inventory.itemList.Count
                     }
                 },
                 Items = new List<ItemData>()
             };
 
-            foreach (var item in container.inventory.itemList)
+            foreach (var item in inventory.itemList)
             {
                 var isBlueprint = item.IsBlueprint();
                 var itemData = new ItemData
@@ -311,6 +318,18 @@ namespace Oxide.Plugins
             iplayer.Reply(GetMsg("Loot Container Saved", iplayer.Id));
         }
 
+        private void CommandLootRefill(IPlayer player, string command, string[] args)
+        {
+            if (!player.HasPermission(PermissionLootRefill))
+            {
+                player.Reply(GetMsg("No Permission", player.Id));
+                return;
+            }
+            
+            player.Reply(GetMsg("Loot Refill Started", player.Id));
+            LootRefill();
+        }
+
         #endregion
         
         #region Hooks
@@ -322,7 +341,8 @@ namespace Oxide.Plugins
                 {"In-Game Only", "Please, use this only while you're in the game"},
                 {"No Permission", "You don't have enough permissions"},
                 {"No Loot Container", "Please, look at the loot container in 10m"},
-                {"Loot Container Saved", "You have saved this loot container data to configuration"}
+                {"Loot Container Saved", "You have saved this loot container data to configuration"},
+                {"Loot Refill Started", "Loot refill process just started"}
             }, this);
         }
 
@@ -331,6 +351,7 @@ namespace Oxide.Plugins
             Ins = this;
             
             permission.RegisterPermission(PermissionLootSave, this);
+            permission.RegisterPermission(PermissionLootRefill, this);
 
             // Converting old configuration
             if (_config.Skins != null)
@@ -376,19 +397,11 @@ namespace Oxide.Plugins
             }
 
             AddCovalenceCommand(_config.LootSaveCommand, nameof(CommandLootSave));
+            AddCovalenceCommand(_config.LootRefillCommand, nameof(CommandLootRefill));
 
             _initialized = true;
 
-            NextFrame(() =>
-            {
-                var containers = UnityEngine.Object.FindObjectsOfType<LootContainer>();
-                var containersCount = containers.Length;
-                for (var i = 0; i < containersCount; i++)
-                {
-                    var container = containers[i];
-                    LootPlusController.Instance.StartCoroutine(LootHandler(container));
-                }
-            });
+            NextFrame(LootRefill);
         }
 
         private void Unload()
@@ -718,6 +731,17 @@ namespace Oxide.Plugins
         {
             if (_config.Debug)
                 Interface.Oxide.LogDebug(message);
+        }
+
+        private void LootRefill()
+        {
+            var containers = UnityEngine.Object.FindObjectsOfType<LootContainer>();
+            var containersCount = containers.Length;
+            for (var i = 0; i < containersCount; i++)
+            {
+                var container = containers[i];
+                LootPlusController.Instance.StartCoroutine(LootHandler(container));
+            }
         }
         
         #endregion
