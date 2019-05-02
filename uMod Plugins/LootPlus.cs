@@ -272,7 +272,8 @@ namespace Oxide.Plugins
                         Capacity = inventory.itemList.Count
                     }
                 },
-                Items = new List<ItemData>()
+                Items = new List<ItemData>(),
+                MaxRetries = inventory.itemList.Count * 2
             };
 
             foreach (var item in inventory.itemList)
@@ -325,6 +326,8 @@ namespace Oxide.Plugins
                 player.Reply(GetMsg("No Permission", player.Id));
                 return;
             }
+            
+            LoadConfig(); // What if something has changed there? :o
             
             player.Reply(GetMsg("Loot Refill Started", player.Id));
             LootRefill();
