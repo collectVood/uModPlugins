@@ -9,7 +9,7 @@ using Random = System.Random;
 
 namespace Oxide.Plugins
 {
-    [Info("Loot Plus", "Iv Misticos", "2.0.3")]
+    [Info("Loot Plus", "Iv Misticos", "2.0.4")]
     [Description("Modify loot on your server.")]
     public class LootPlus : RustPlugin
     {
@@ -131,11 +131,21 @@ namespace Oxide.Plugins
 
         private class AmountData : ChanceData
         {
-            [JsonProperty(PropertyName = "Amount")]
-            public int Amount = 3;
+            [JsonProperty(PropertyName = "Amount", NullValueHandling = NullValueHandling.Ignore)]
+            public int? Amount = null;
+            
+            [JsonProperty(PropertyName = "Minimal Amount")]
+            public int MinAmount = 3;
+            
+            [JsonProperty(PropertyName = "Maximal Amount")]
+            public int MaxAmount = 3;
             
             [JsonProperty(PropertyName = "Rate")]
             public float Rate = -1f;
+
+            public int? SelectAmount() => Ins?.Random?.Next(MinAmount, MaxAmount + 1);
+
+            public bool IsValid() => MinAmount > 0 && MaxAmount > 0;
         }
 
         private class CapacityData : ChanceData
@@ -410,6 +420,24 @@ namespace Oxide.Plugins
                 }
             }
 
+            foreach (var container in _config.Containers)
+            {
+                foreach (var item in container.Items)
+                {
+                    foreach (var amount in item.Amount)
+                    {
+                        if (!amount.Amount.HasValue)
+                            continue;
+                        
+                        amount.MinAmount = amount.Amount.Value;
+                        amount.MaxAmount = amount.Amount.Value;
+                        amount.Amount = null;
+                    }
+                }
+            }
+            
+            SaveConfig();
+
             if (!_config.Enabled)
             {
                 PrintWarning("WARNING! Plugin is disabled in configuration");
@@ -596,8 +624,8 @@ namespace Oxide.Plugins
                 }
 
                 var amount = 1;
-                if (dataAmount.Amount > 0)
-                    amount = dataAmount.Amount;
+                if (dataAmount.IsValid())
+                    amount = dataAmount.SelectAmount() ?? amount; // :P
 
                 if (dataAmount.Rate > 0f)
                     amount = (int) (dataAmount.Rate * amount);
@@ -687,8 +715,8 @@ namespace Oxide.Plugins
                     }
 
                     var amount = item.amount;
-                    if (dataAmount.Amount > 0)
-                        amount = dataAmount.Amount;
+                    if (dataAmount.IsValid())
+                        amount = dataAmount.SelectAmount() ?? amount; // :P again lol, heh
 
                     if (dataAmount.Rate > 0f)
                         amount = (int) (dataAmount.Rate * amount);
