@@ -314,6 +314,7 @@ namespace Oxide.Plugins
                 containerData.Items.Add(itemData);
             }
 
+            LoadConfig(); // What if the guy worked on it and we broke everything <3
             _config.Containers.Add(containerData);
             SaveConfig();
             iplayer.Reply(GetMsg("Loot Container Saved", iplayer.Id));
