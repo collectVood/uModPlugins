@@ -25,6 +25,8 @@ namespace Oxide.Plugins
         
         private const string PermissionLootRefill = "lootplus.lootrefill";
         
+        private const string PermissionLoadConfig = "lootplus.loadconfig";
+        
         #endregion
         
         #region Configuration
@@ -41,6 +43,9 @@ namespace Oxide.Plugins
             
             [JsonProperty(PropertyName = "Container Refill Command")]
             public string LootRefillCommand = "lootrefill";
+            
+            [JsonProperty(PropertyName = "Load Config Command")]
+            public string LoadConfigCommand = "lootconfig";
             
             [JsonProperty(PropertyName = "Loot Skins", NullValueHandling = NullValueHandling.Ignore)]
             public Dictionary<string, Dictionary<string, ulong>> Skins = null; // OLD
@@ -297,7 +302,7 @@ namespace Oxide.Plugins
                         }
                     },
                     Shortname = isBlueprint ? item.blueprintTargetDef.shortname : item.info.shortname,
-                    Name = item.name,
+                    Name = item.name ?? string.Empty, // yes but it doesnt work :( lol?
                     AllowStacking = true,
                     IsBlueprint = isBlueprint
                 };
@@ -314,9 +319,9 @@ namespace Oxide.Plugins
                 containerData.Items.Add(itemData);
             }
 
-            LoadConfig(); // What if the guy worked on it and we broke everything <3
             _config.Containers.Add(containerData);
             SaveConfig();
+            
             iplayer.Reply(GetMsg("Loot Container Saved", iplayer.Id));
         }
 
@@ -328,10 +333,20 @@ namespace Oxide.Plugins
                 return;
             }
             
-            LoadConfig(); // What if something has changed there? :o
-            
             player.Reply(GetMsg("Loot Refill Started", player.Id));
             LootRefill();
+        }
+
+        private void CommandLoadConfig(IPlayer player, string command, string[] args)
+        {
+            if (!player.HasPermission(PermissionLoadConfig))
+            {
+                player.Reply(GetMsg("No Permission", player.Id));
+                return;
+            }
+            
+            LoadConfig(); // What if something has changed there? :o
+            player.Reply(GetMsg("Config Loaded", player.Id));
         }
 
         #endregion
@@ -346,7 +361,8 @@ namespace Oxide.Plugins
                 {"No Permission", "You don't have enough permissions"},
                 {"No Loot Container", "Please, look at the loot container in 10m"},
                 {"Loot Container Saved", "You have saved this loot container data to configuration"},
-                {"Loot Refill Started", "Loot refill process just started"}
+                {"Loot Refill Started", "Loot refill process just started"},
+                {"Config Loaded", "Your configuration was loaded"}
             }, this);
         }
 
@@ -356,6 +372,7 @@ namespace Oxide.Plugins
             
             permission.RegisterPermission(PermissionLootSave, this);
             permission.RegisterPermission(PermissionLootRefill, this);
+            permission.RegisterPermission(PermissionLoadConfig, this);
 
             // Converting old configuration
             if (_config.Skins != null)
@@ -402,6 +419,7 @@ namespace Oxide.Plugins
 
             AddCovalenceCommand(_config.LootSaveCommand, nameof(CommandLootSave));
             AddCovalenceCommand(_config.LootRefillCommand, nameof(CommandLootRefill));
+            AddCovalenceCommand(_config.LoadConfigCommand, nameof(CommandLoadConfig));
 
             _initialized = true;
 
