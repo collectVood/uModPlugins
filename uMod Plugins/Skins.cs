@@ -4,8 +4,10 @@ using System.ComponentModel;
 using System.Linq;
 using Newtonsoft.Json;
 using Oxide.Core;
+using Oxide.Core.Libraries.Covalence;
 using UnityEngine;
 using Component = UnityEngine.Component;
+using Object = UnityEngine.Object;
 
 namespace Oxide.Plugins
 {
@@ -13,11 +15,15 @@ namespace Oxide.Plugins
     [Description("Allow players to change items skin with the skin from steam workshop.")]
     class Skins : RustPlugin
     {
+        #region Variables
+        
         private const string BoxPrefab = "assets/prefabs/deployable/large wood storage/box.wooden.large.prefab";
         private static List<ContainerController> _boxes = new List<ContainerController>();
 
         private const string PermissionUse = "skins.use";
         private const string PermissionAdmin = "skins.admin";
+        
+        #endregion
 
         #region Configuration
 
@@ -25,8 +31,8 @@ namespace Oxide.Plugins
 
         public class Configuration
         {
-            [JsonProperty(PropertyName = "Chat Command")]
-            public string CommandChat = "skin";
+            [JsonProperty(PropertyName = "Command")]
+            public string Command = "skin";
             
             [JsonProperty(PropertyName = "")] // no idea what it was
             public bool DefaultSkins = false;
@@ -72,7 +78,14 @@ namespace Oxide.Plugins
         {
             lang.RegisterMessages(new Dictionary<string, string>
             {
-                { "Not Allowed", "You don't have permission to use this command" }
+                { "Not Allowed", "You don't have permission to use this command" },
+                { "Cannot Use", "I'm sorry, you cannot use that right now" },
+                { "Help", "Command usage:\n" +
+                          "skin show - Show skins" },
+                { "Admin Help", "Admin command usage:\n" +
+                          "skin show - Show skins\n" +
+                          "skin remove (Shortname) (Skin ID) - Remove a skin\n" +
+                          "skin add (Shortname) (Skin ID) - Add a skin" },
             }, this);
         }
 
@@ -80,6 +93,8 @@ namespace Oxide.Plugins
         {
             permission.RegisterPermission(PermissionUse, this);
             permission.RegisterPermission(PermissionAdmin, this);
+
+            AddCovalenceCommand(_config.Command, nameof(CommandSkin));
         }
 
         private void Unload()
@@ -100,13 +115,14 @@ namespace Oxide.Plugins
         private void OnPlayerDisconnected(BasePlayer player)
         {
             var index = ContainerController.FindIndex(player);
-            UnityEngine.Object.Destroy(_boxes[index]);
+            var container = _boxes[index];
+            container.DoDestroy();
             _boxes.RemoveAt(index);
         }
 
         private void OnEntityTakeDamage(BaseNetworkable entity, HitInfo info)
         {
-            if (!(entity is StorageContainer) || ContainerController.FindIndex(entity as StorageContainer) == -1)
+            if (!(entity is StorageContainer) || ContainerController.FindIndex((StorageContainer) entity) == -1)
                 return;
 
             // Remove damage from our containers
@@ -141,14 +157,19 @@ namespace Oxide.Plugins
             // TODO
         }
 
-        private void OnItemRemovedFromContainer(ItemContainer container, Item item)
+        private void OnItemRemovedFromContainer(ItemContainer itemContainer, Item item)
         {
-            // TODO
+            var container = ContainerController.Find(itemContainer.entityOwner as StorageContainer);
         }
 
-        private void OnLootEntityEnd(BasePlayer player, BaseCombatEntity entity)
+        private void OnLootEntityEnd(BasePlayer player, Object entity)
         {
-            // TODO
+            var container = ContainerController.Find(player);
+            if (container.container != entity)
+                return;
+            
+            container.GiveItemsBack();
+            container.Clear();
         }
 
         #endregion
@@ -166,28 +187,87 @@ namespace Oxide.Plugins
 
         #region Commands
 
-        private void CommandWorkshopLoad(ConsoleSystem.Arg arg)
+        private void CommandWorkshopLoad(IPlayer player, string command, string[] args)
         {
             // TODO
         }
 
-        private void CommandSkin(BasePlayer player)
+        private void CommandSkin(IPlayer player, string command, string[] args)
         {
-            if (!CanUse(player.userID))
+            if (!CanUse(player.Id))
             {
-                // TODO: Message
+                player.Reply(GetMsg("Not Allowed", player.Id));
                 return;
             }
 
-            ContainerController.Find(player).Show();
+            if (args.Length == 0)
+                args = new[] {"show"}; // :P strange yeah
+
+            var isAdmin = player.IsServer || player.HasPermission(PermissionAdmin);
+            var basePlayer = player.Object as BasePlayer;
+            var isPlayer = basePlayer != null;
+            
+            switch (args[0].ToLower())
+            {
+                case "show":
+                case "s":
+                {
+                    if (!isPlayer)
+                    {
+                        player.Reply(GetMsg("Cannot Use", player.Id));
+                        return;
+                    }
+
+                    var container = ContainerController.Find(basePlayer);
+                    if (!container.CanShow())
+                    {
+                        player.Reply(GetMsg("Cannot Use", player.Id));
+                        return;
+                    }
+
+                    container.Show();
+                    break;
+                }
+
+                case "add":
+                case "a":
+                {
+                    if (args.Length != 3)
+                        goto default;
+                    
+                    break;
+                }
+
+                case "remove":
+                case "delete":
+                case "r":
+                case "d":
+                {
+                    if (args.Length != 3)
+                        goto default;
+                    
+                    break;
+                }
+
+                default: // and "help", and all other args
+                {
+                    player.Reply(GetMsg(isAdmin ? "Admin Help" : "Help", player.Id));
+                    break;
+                }
+            }
         }
-        
+
         #endregion
         
         #region Controller
 
         private class ContainerController : MonoBehaviour
         {
+            /*
+             * Basic tips:
+             * Item with index 0: Player's skin item
+             */
+            
             public BasePlayer owner;
             public StorageContainer container;
 
@@ -246,7 +326,50 @@ namespace Oxide.Plugins
 
             public void Show()
             {
+                owner.EndLooting();
                 
+                if (!owner.inventory.loot.StartLootingEntity(container, false))
+                    return;
+                
+                owner.inventory.loot.AddContainer(container.inventory);
+                owner.inventory.loot.SendImmediate();
+                owner.ClientRPCPlayer(null, owner, "RPC_OpenLootPanel", container.GetPanelName());
+            }
+
+            public bool CanShow()
+            {
+                return owner != null && !owner.IsDead();
+            }
+
+            public void GiveItemsBack()
+            {
+                if (owner == null || container == null)
+                    return;
+
+                var item = container.inventory?.GetSlot(0);
+                if (item == null)
+                    return;
+                
+                owner.GiveItem(item);
+            }
+
+            public void Clear()
+            {
+                container.inventory.Clear();
+                ItemManager.DoRemoves();
+                container.inventory.itemList.Clear();
+            }
+
+            public void CloseContainer()
+            {
+                owner.EndLooting();
+            }
+
+            public void DoDestroy()
+            {
+                GiveItemsBack();
+                container.Kill();
+                Destroy(this);
             }
         }
         
@@ -254,9 +377,11 @@ namespace Oxide.Plugins
         
         #region Helpers
 
-        private bool CanUse(ulong id) => permission.UserHasPermission(id.ToString(), PermissionUse);
+        private bool CanUse(string id) => permission.UserHasPermission(id, PermissionUse);
 
-        private bool CanUseAdmin(ulong id) => permission.UserHasPermission(id.ToString(), PermissionAdmin);
+        private bool CanUseAdmin(string id) => permission.UserHasPermission(id, PermissionAdmin);
+
+        private string GetMsg(string key, string userId = null) => lang.GetMessage(key, this, userId);
 
         #endregion
     }
