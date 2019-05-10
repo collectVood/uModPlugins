@@ -170,14 +170,15 @@ namespace Oxide.Plugins
             return null;
         }
 
-        private void OnItemSplit(Item item, int amount)
-        {
-            // TODO
-        }
-
         private void OnItemRemovedFromContainer(ItemContainer itemContainer, Item item)
         {
-            var container = ContainerController.Find(itemContainer.entityOwner as StorageContainer);
+            var player = itemContainer?.GetOwnerPlayer();
+            var storageContainer = itemContainer?.entityOwner as StorageContainer;
+            var container = ContainerController.Find(player);
+            if (container == null || container.container != storageContainer)
+                return;
+
+            container.Clear(); // I guess it's all okay but needs testing
         }
 
         private void OnLootEntityEnd(BasePlayer player, Object entity)
