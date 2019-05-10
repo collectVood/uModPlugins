@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
@@ -193,6 +193,8 @@ namespace Oxide.Plugins
 
         #endregion
 
+        // I don't think we need it because we set limitNetworking to true.
+        /*
         private object CanNetworkTo(BaseNetworkable entity, BasePlayer target)
         {
             // You won't see our containers
@@ -201,6 +203,7 @@ namespace Oxide.Plugins
             
             return null;
         }
+        */
         
         #endregion
 
@@ -295,7 +298,8 @@ namespace Oxide.Plugins
                 container = GameManager.server.CreateEntity(BoxPrefab) as StorageContainer;
                 if (container == null)
                     return; // Just a useless check, it shouldn't be null :)
-                
+
+                container.limitNetworking = true; // No-one shouldn't really see it.
                 container.Spawn(); // Spawning it, YES!
             }    
 
@@ -304,6 +308,9 @@ namespace Oxide.Plugins
             // ReSharper disable once SuggestBaseTypeForParameter
             public static int FindIndex(BasePlayer player)
             {
+                if (!CanShow(player))
+                    goto none;
+                
                 for (var i = 0; i < _boxes.Count; i++)
                 {
                     if (_boxes[i].owner == player)
@@ -312,6 +319,7 @@ namespace Oxide.Plugins
                     }
                 }
 
+                none:
                 return -1;
             }
 
@@ -324,6 +332,9 @@ namespace Oxide.Plugins
             // ReSharper disable once SuggestBaseTypeForParameter
             public static int FindIndex(StorageContainer container)
             {
+                if (container == null)
+                    goto none;
+                
                 for (var i = 0; i < _boxes.Count; i++)
                 {
                     if (_boxes[i].container == container)
@@ -332,6 +343,7 @@ namespace Oxide.Plugins
                     }
                 }
 
+                none:
                 return -1;
             }
 
@@ -357,7 +369,12 @@ namespace Oxide.Plugins
 
             public bool CanShow()
             {
-                return owner != null && !owner.IsDead();
+                return CanShow(owner);
+            }
+
+            private static bool CanShow(BaseCombatEntity player)
+            {
+                return player != null && !player.IsDead();
             }
 
             public void GiveItemsBack()
