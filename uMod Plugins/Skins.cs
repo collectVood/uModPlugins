@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
@@ -139,17 +139,35 @@ namespace Oxide.Plugins
 
         private void OnItemAddedToContainer(ItemContainer container, Item item)
         {
-            // TODO
+            /*
+             * TODO:
+             * 1. Clear and refund an item (OnLootEntityEnd)
+             * 2. Add new items
+             */
         }
 
         private object CanMoveItem(Item item, PlayerInventory playerLoot, uint targetContainer, int targetSlot)
         {
-            // TODO
+            /*
+             * TODO:
+             * 1. Clear and refund an item (OnLootEntityEnd)
+             * 2. Add new items
+             */
+
+            return null;
         }
 
         private object CanAcceptItem(ItemContainer container, Item item)
         {
-            // TODO
+            /*
+             * TODO:
+             * 1. Clear and refund an item (OnLootEntityEnd)
+             * 2. Add new items
+             */
+            
+            // WARNING! Need to work on it and CanMoveItem, I don't think I really need this.
+
+            return null;
         }
 
         private void OnItemSplit(Item item, int amount)
