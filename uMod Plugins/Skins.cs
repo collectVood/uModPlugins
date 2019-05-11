@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
@@ -81,11 +81,15 @@ namespace Oxide.Plugins
                 { "Not Allowed", "You don't have permission to use this command" },
                 { "Cannot Use", "I'm sorry, you cannot use that right now" },
                 { "Help", "Command usage:\n" +
-                          "skin show - Show skins" },
+                          "skin show - Show skins\n" +
+                          "skin get - Get Skin ID of the item" },
                 { "Admin Help", "Admin command usage:\n" +
                           "skin show - Show skins\n" +
+                          "skin get - Get Skin ID of the item\n" +
                           "skin remove (Shortname) (Skin ID) - Remove a skin\n" +
                           "skin add (Shortname) (Skin ID) - Add a skin" },
+                { "Skin Get Format", "{shortname}'s skin: {id}" },
+                { "Skin Get No Item", "Please, hold the needed item" }
             }, this);
         }
 
@@ -271,6 +275,28 @@ namespace Oxide.Plugins
                         goto default;
                     
                     // TODO: Remove skin
+                    
+                    break;
+                }
+
+                case "get":
+                case "g":
+                {
+                    if (!isPlayer)
+                    {
+                        player.Reply(GetMsg("Cannot Use", player.Id));
+                        break;
+                    }
+
+                    var item = basePlayer.GetActiveItem();
+                    if (item == null || !item.IsValid())
+                    {
+                        player.Reply(GetMsg("Skin Get No Item", player.Id));
+                        break;
+                    }
+
+                    player.Reply(GetMsg("Skin Get Format", player.Id).Replace("{shortname}", item.info.shortname)
+                        .Replace("{id}", item.skin.ToString()));
                     
                     break;
                 }
