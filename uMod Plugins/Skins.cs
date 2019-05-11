@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
@@ -237,14 +237,14 @@ namespace Oxide.Plugins
                     if (!isPlayer)
                     {
                         player.Reply(GetMsg("Cannot Use", player.Id));
-                        return;
+                        break;
                     }
 
                     var container = ContainerController.Find(basePlayer);
                     if (!container.CanShow())
                     {
                         player.Reply(GetMsg("Cannot Use", player.Id));
-                        return;
+                        break;
                     }
 
                     container.Show();
@@ -257,6 +257,8 @@ namespace Oxide.Plugins
                     if (args.Length != 3)
                         goto default;
                     
+                    // TODO: Add skin
+                    
                     break;
                 }
 
@@ -267,6 +269,8 @@ namespace Oxide.Plugins
                 {
                     if (args.Length != 3)
                         goto default;
+                    
+                    // TODO: Remove skin
                     
                     break;
                 }
