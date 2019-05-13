@@ -34,10 +34,7 @@ namespace Oxide.Plugins
             [JsonProperty(PropertyName = "Command")]
             public string Command = "skin";
             
-            [JsonProperty(PropertyName = "")] // no idea what it was
-            public bool DefaultSkins = false;
-            
-            [JsonProperty(PropertyName = "Custom Skins")]
+            [JsonProperty(PropertyName = "Custom Skins", ObjectCreationHandling = ObjectCreationHandling.Replace)]
             public Dictionary<string, List<ulong>> CustomSkins = new Dictionary<string, List<ulong>>
             {
                 { "shortname", new List<ulong>
@@ -215,7 +212,7 @@ namespace Oxide.Plugins
 
         private void CommandWorkshopLoad(IPlayer player, string command, string[] args)
         {
-            // TODO
+            // TODO: Load skins from workshop?
         }
 
         private void CommandSkin(IPlayer player, string command, string[] args)
