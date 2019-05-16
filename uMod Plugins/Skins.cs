@@ -1,7 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
-using System.Linq;
 using Newtonsoft.Json;
 using Oxide.Core;
 using Oxide.Core.Libraries.Covalence;
@@ -27,9 +25,9 @@ namespace Oxide.Plugins
 
         #region Configuration
 
-        private Configuration _config;
+        private static Configuration _config;
 
-        public class Configuration
+        private class Configuration
         {
             [JsonProperty(PropertyName = "Command")]
             public string Command = "skin";
@@ -231,7 +229,7 @@ namespace Oxide.Plugins
             if (args.Length == 0)
                 args = new[] {"show"}; // :P strange yeah
 
-            var isAdmin = player.IsServer || player.HasPermission(PermissionAdmin);
+            var isAdmin = player.IsServer || CanUseAdmin(player.Id);
             var basePlayer = player.Object as BasePlayer;
             var isPlayer = basePlayer != null;
             
@@ -324,6 +322,9 @@ namespace Oxide.Plugins
             
             public BasePlayer owner;
             public StorageContainer container;
+            public ItemContainer inventory => container.inventory;
+            
+            // TODO: No StorageContainer, only ItemContainer
 
             private void Awake()
             {
@@ -394,7 +395,7 @@ namespace Oxide.Plugins
                 if (!owner.inventory.loot.StartLootingEntity(container, false))
                     return;
                 
-                owner.inventory.loot.AddContainer(container.inventory);
+                owner.inventory.loot.AddContainer(inventory);
                 owner.inventory.loot.SendImmediate();
                 owner.ClientRPCPlayer(null, owner, "RPC_OpenLootPanel", container.GetPanelName());
             }
@@ -414,7 +415,7 @@ namespace Oxide.Plugins
                 if (owner == null || container == null)
                     return;
 
-                var item = container.inventory?.GetSlot(0);
+                var item = inventory?.GetSlot(0);
                 if (item == null)
                     return;
                 
@@ -423,9 +424,9 @@ namespace Oxide.Plugins
 
             public void Clear()
             {
-                container.inventory.Clear();
+                inventory.Clear();
                 ItemManager.DoRemoves();
-                container.inventory.itemList.Clear();
+                inventory.itemList.Clear();
             }
 
             public void CloseContainer()
