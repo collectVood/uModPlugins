@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
@@ -86,7 +86,12 @@ namespace Oxide.Plugins
                           "skin remove (Shortname) (Skin ID) - Remove a skin\n" +
                           "skin add (Shortname) (Skin ID) - Add a skin" },
                 { "Skin Get Format", "{shortname}'s skin: {id}" },
-                { "Skin Get No Item", "Please, hold the needed item" }
+                { "Skin Get No Item", "Please, hold the needed item" },
+                { "Incorrect Skin", "You have entered an incorrect skin" },
+                { "Skin Already Exists", "This skin already exists on this item" },
+                { "Skin Does Not Exist", "This skin does not exist" },
+                { "Skin Added", "Skin was successfully added" },
+                { "Skin Removed", "Skin was removed" }
             }, this);
         }
 
