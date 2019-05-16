@@ -32,8 +32,8 @@ namespace Oxide.Plugins
             [JsonProperty(PropertyName = "Command")]
             public string Command = "skin";
             
-            [JsonProperty(PropertyName = "Custom Skins", ObjectCreationHandling = ObjectCreationHandling.Replace)]
-            public Dictionary<string, List<ulong>> CustomSkins = new Dictionary<string, List<ulong>>
+            [JsonProperty(PropertyName = "Skins", ObjectCreationHandling = ObjectCreationHandling.Replace)]
+            public Dictionary<string, List<ulong>> Skins = new Dictionary<string, List<ulong>>
             {
                 { "shortname", new List<ulong>
                 {
@@ -213,11 +213,6 @@ namespace Oxide.Plugins
 
         #region Commands
 
-        private void CommandWorkshopLoad(IPlayer player, string command, string[] args)
-        {
-            // TODO: Load skins from workshop?
-        }
-
         private void CommandSkin(IPlayer player, string command, string[] args)
         {
             if (!CanUse(player.Id))
@@ -290,7 +285,7 @@ namespace Oxide.Plugins
                     LoadConfig();
 
                     List<ulong> skins;
-                    if (!_config.CustomSkins.TryGetValue(shortname, out skins))
+                    if (!_config.Skins.TryGetValue(shortname, out skins))
                         skins = new List<ulong>();
 
                     if (skins.Contains(skin))
@@ -300,7 +295,7 @@ namespace Oxide.Plugins
                     }
                     
                     skins.Add(skin);
-                    _config.CustomSkins[shortname] = skins;
+                    _config.Skins[shortname] = skins;
                     player.Reply(GetMsg("Skin Added", player.Id));
                     
                     SaveConfig();
@@ -334,14 +329,14 @@ namespace Oxide.Plugins
 
                     List<ulong> skins;
                     int index;
-                    if (!_config.CustomSkins.TryGetValue(shortname, out skins) || (index = skins.IndexOf(skin)) == -1)
+                    if (!_config.Skins.TryGetValue(shortname, out skins) || (index = skins.IndexOf(skin)) == -1)
                     {
                         player.Reply(GetMsg("Skin Does Not Exist", player.Id));
                         break;
                     }
                     
                     skins.RemoveAt(index);
-                    _config.CustomSkins[shortname] = skins;
+                    _config.Skins[shortname] = skins;
                     player.Reply(GetMsg("Skin Removed", player.Id));
                     
                     SaveConfig();
@@ -520,7 +515,7 @@ namespace Oxide.Plugins
 
                 var item = inventory.GetSlot(0);
                 List<ulong> skins;
-                if (!_config.CustomSkins.TryGetValue(item.info.shortname, out skins))
+                if (!_config.Skins.TryGetValue(item.info.shortname, out skins))
                     return;
                 
                 var perPage = inventory.capacity - 1;
