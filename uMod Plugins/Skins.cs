@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using Newtonsoft.Json;
 using Oxide.Core;
@@ -235,6 +235,18 @@ namespace Oxide.Plugins
             
             switch (args[0].ToLower())
             {
+                case "_tech-update": // TODO: Usage (UI Buttons)
+                {
+                    int page;
+                    if (args.Length != 2 || !isPlayer || !int.TryParse(args[1], out page))
+                        break;
+
+                    var container = ContainerController.Find(basePlayer);
+                    container.UpdateContent(page);
+                    
+                    break;
+                }
+                    
                 case "show":
                 case "s":
                 {
@@ -497,6 +509,52 @@ namespace Oxide.Plugins
                 GiveItemsBack();
                 container.Kill();
                 Destroy(this);
+            }
+
+            public bool IsValid() => container != null && container.inventory?.itemList != null;
+
+            public void UpdateContent(int page)
+            {
+                if (page < 0 || !IsValid() || inventory.itemList.Count <= 0)
+                    return;
+
+                var item = inventory.GetSlot(0);
+                List<ulong> skins;
+                if (!_config.CustomSkins.TryGetValue(item.info.shortname, out skins))
+                    return;
+                
+                var perPage = inventory.capacity - 1;
+                var offset = perPage * page;
+                if (offset >= skins.Count)
+                    return;
+                
+                for (var i = 0; i < inventory.itemList.Count; i++)
+                {
+                    if (i == 0)
+                        continue;
+
+                    inventory.itemList[i].DoRemove();
+                    inventory.itemList.RemoveAt(i);
+                }
+
+                var slot = 1;
+                for (var i = 0; i < skins.Count; i++)
+                {
+                    if (offset > i)
+                        continue;
+                    
+                    var skin = skins[i];
+                    var newItem = ItemManager.Create(item.info, item.amount, skin);
+                    
+                    newItem.RemoveFromContainer();
+                    newItem.RemoveFromWorld();
+                    newItem.position = slot++;
+
+                    newItem.parent = inventory;
+                    inventory.itemList.Add(newItem);
+                    foreach (var itemMod in newItem.info.itemMods)
+                        itemMod.OnParentChanged(newItem);
+                }
             }
         }
         
