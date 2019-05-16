@@ -260,8 +260,38 @@ namespace Oxide.Plugins
                 {
                     if (args.Length != 3)
                         goto default;
+
+                    if (!isAdmin)
+                    {
+                        player.Reply(GetMsg("Not Allowed", player.Id));
+                        break;
+                    }
+
+                    var shortname = args[1];
+                    ulong skin;
+                    if (!ulong.TryParse(args[2], out skin))
+                    {
+                        player.Reply(GetMsg("Incorrect Skin", player.Id));
+                        break;
+                    }
                     
-                    // TODO: Add skin
+                    LoadConfig();
+
+                    List<ulong> skins;
+                    if (!_config.CustomSkins.TryGetValue(shortname, out skins))
+                        skins = new List<ulong>();
+
+                    if (skins.Contains(skin))
+                    {
+                        player.Reply(GetMsg("Skin Already Exists", player.Id));
+                        break;
+                    }
+                    
+                    skins.Add(skin);
+                    _config.CustomSkins[shortname] = skins;
+                    player.Reply(GetMsg("Skin Added", player.Id));
+                    
+                    SaveConfig();
                     
                     break;
                 }
@@ -273,8 +303,36 @@ namespace Oxide.Plugins
                 {
                     if (args.Length != 3)
                         goto default;
+
+                    if (!isAdmin)
+                    {
+                        player.Reply(GetMsg("Not Allowed", player.Id));
+                        break;
+                    }
+
+                    var shortname = args[1];
+                    ulong skin;
+                    if (!ulong.TryParse(args[2], out skin))
+                    {
+                        player.Reply(GetMsg("Incorrect Skin", player.Id));
+                        break;
+                    }
                     
-                    // TODO: Remove skin
+                    LoadConfig();
+
+                    List<ulong> skins;
+                    int index;
+                    if (!_config.CustomSkins.TryGetValue(shortname, out skins) || (index = skins.IndexOf(skin)) == -1)
+                    {
+                        player.Reply(GetMsg("Skin Does Not Exist", player.Id));
+                        break;
+                    }
+                    
+                    skins.RemoveAt(index);
+                    _config.CustomSkins[shortname] = skins;
+                    player.Reply(GetMsg("Skin Removed", player.Id));
+                    
+                    SaveConfig();
                     
                     break;
                 }
