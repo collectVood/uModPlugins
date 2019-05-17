@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using Newtonsoft.Json;
 using Oxide.Core;
@@ -453,10 +453,18 @@ namespace Oxide.Plugins
             
             #endregion
 
+            public void ChangeTo(Item item)
+            {
+                GiveItemsBack();
+                inventory.Insert(item);
+                UpdateContent(0);
+            }
+
             public void Show()
             {
                 owner.EndLooting();
                 
+                UpdateContent(0);
                 if (!owner.inventory.loot.StartLootingEntity(container, false))
                     return;
                 
@@ -477,7 +485,7 @@ namespace Oxide.Plugins
 
             public void GiveItemsBack()
             {
-                if (owner == null || container == null)
+                if (owner == null || !IsValid())
                     return;
 
                 var item = inventory?.GetSlot(0);
@@ -510,6 +518,8 @@ namespace Oxide.Plugins
 
             public void UpdateContent(int page)
             {
+                Clear();
+                
                 if (page < 0 || !IsValid() || inventory.itemList.Count <= 0)
                     return;
 
