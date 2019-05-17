@@ -141,13 +141,21 @@ namespace Oxide.Plugins
 
         #region Working With Containers
 
-        private void OnItemAddedToContainer(ItemContainer container, Item item)
+        private void OnItemAddedToContainer(ItemContainer itemContainer, Item item)
         {
             /*
              * TODO:
              * 1. Clear and refund an item (OnLootEntityEnd)
              * 2. Add new items
              */
+
+            var container = ContainerController.Find(itemContainer);
+            if (container == null)
+                return;
+            
+            container.GiveItemsBack();
+            container.Clear();
+            container.ChangeTo(item);
         }
 
         private object CanMoveItem(Item item, PlayerInventory playerLoot, uint targetContainer, int targetSlot)
@@ -511,7 +519,7 @@ namespace Oxide.Plugins
                 Destroy(this);
             }
 
-            public bool IsValid() => container?.itemList != null;
+            private bool IsValid() => container?.itemList != null;
 
             public void UpdateContent(int page)
             {
@@ -519,6 +527,8 @@ namespace Oxide.Plugins
                 
                 if (page < 0 || !IsValid() || container.itemList.Count <= 0)
                     return;
+                
+                // TODO: UI goes here. Also check if the container is opened :P
 
                 var item = container.GetSlot(0);
                 List<ulong> skins;
