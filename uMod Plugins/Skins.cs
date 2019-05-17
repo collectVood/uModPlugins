@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using Newtonsoft.Json;
 using Oxide.Core;
@@ -15,8 +15,7 @@ namespace Oxide.Plugins
     {
         #region Variables
         
-        private const string BoxPrefab = "assets/prefabs/deployable/large wood storage/box.wooden.large.prefab";
-        private static List<ContainerController> _boxes = new List<ContainerController>();
+        private static List<ContainerController> _controllers = new List<ContainerController>();
 
         private const string PermissionUse = "skins.use";
         private const string PermissionAdmin = "skins.admin";
@@ -103,9 +102,9 @@ namespace Oxide.Plugins
 
         private void Unload()
         {
-            for (var i = _boxes.Count - 1; i >= 0; i--)
+            for (var i = _controllers.Count - 1; i >= 0; i--)
             {
-                var container = _boxes[i];
+                var container = _controllers[i];
                 OnPlayerDisconnected(container.owner);
             }
         }
@@ -113,20 +112,21 @@ namespace Oxide.Plugins
         private void OnPlayerInit(Component player)
         {
             var container = player.gameObject.AddComponent<ContainerController>();
-            _boxes.Add(container); // lol
+            _controllers.Add(container); // lol
         }
 
         private void OnPlayerDisconnected(BasePlayer player)
         {
             var index = ContainerController.FindIndex(player);
-            var container = _boxes[index];
+            var container = _controllers[index];
             container.DoDestroy();
-            _boxes.RemoveAt(index);
+            _controllers.RemoveAt(index);
         }
 
         private void OnEntityTakeDamage(BaseNetworkable entity, HitInfo info)
         {
-            if (!(entity is StorageContainer) || ContainerController.FindIndex((StorageContainer) entity) == -1)
+            if (!(entity is StorageContainer) ||
+                ContainerController.FindIndex(((StorageContainer) entity).inventory) == -1)
                 return;
 
             // Remove damage from our containers
@@ -177,18 +177,22 @@ namespace Oxide.Plugins
         private void OnItemRemovedFromContainer(ItemContainer itemContainer, Item item)
         {
             var player = itemContainer?.GetOwnerPlayer();
-            var storageContainer = itemContainer?.entityOwner as StorageContainer;
             var container = ContainerController.Find(player);
-            if (container == null || container.container != storageContainer)
+            if (container == null || container.container != itemContainer)
                 return;
 
             container.Clear(); // I guess it's all okay but needs testing
         }
 
-        private void OnLootEntityEnd(BasePlayer player, Object entity)
+        private void OnLootEntityEnd(BasePlayer player, BaseCombatEntity entity)
         {
+            if (!(entity is StorageContainer))
+                return;
+
+            var storageContainer = (StorageContainer) entity;
+            
             var container = ContainerController.Find(player);
-            if (container.container != entity)
+            if (container.container != storageContainer.inventory)
                 return;
             
             container.GiveItemsBack();
@@ -386,20 +390,7 @@ namespace Oxide.Plugins
              */
             
             public BasePlayer owner;
-            public StorageContainer container;
-            public ItemContainer inventory => container.inventory;
-            
-            // TODO: No StorageContainer, only ItemContainer
-
-            private void Awake()
-            {
-                container = GameManager.server.CreateEntity(BoxPrefab) as StorageContainer;
-                if (container == null)
-                    return; // Just a useless check, it shouldn't be null :)
-
-                container.limitNetworking = true; // No-one shouldn't really see it.
-                container.Spawn(); // Spawning it, YES!
-            }    
+            public ItemContainer container = new ItemContainer();
 
             #region Search
 
@@ -409,9 +400,9 @@ namespace Oxide.Plugins
                 if (!CanShow(player))
                     goto none;
                 
-                for (var i = 0; i < _boxes.Count; i++)
+                for (var i = 0; i < _controllers.Count; i++)
                 {
-                    if (_boxes[i].owner == player)
+                    if (_controllers[i].owner == player)
                     {
                         return i;
                     }
@@ -424,18 +415,18 @@ namespace Oxide.Plugins
             public static ContainerController Find(BasePlayer player)
             {
                 var index = FindIndex(player);
-                return index == -1 ? null : _boxes[index];
+                return index == -1 ? null : _controllers[index];
             }
 
             // ReSharper disable once SuggestBaseTypeForParameter
-            public static int FindIndex(StorageContainer container)
+            public static int FindIndex(ItemContainer container)
             {
                 if (container == null)
                     goto none;
                 
-                for (var i = 0; i < _boxes.Count; i++)
+                for (var i = 0; i < _controllers.Count; i++)
                 {
-                    if (_boxes[i].container == container)
+                    if (_controllers[i].container == container)
                     {
                         return i;
                     }
@@ -445,10 +436,10 @@ namespace Oxide.Plugins
                 return -1;
             }
 
-            public static ContainerController Find(StorageContainer container)
+            public static ContainerController Find(ItemContainer container)
             {
                 var index = FindIndex(container);
-                return index == -1 ? null : _boxes[index];
+                return index == -1 ? null : _controllers[index];
             }
             
             #endregion
@@ -456,7 +447,7 @@ namespace Oxide.Plugins
             public void ChangeTo(Item item)
             {
                 GiveItemsBack();
-                inventory.Insert(item);
+                container.Insert(item);
                 UpdateContent(0);
             }
 
@@ -465,12 +456,18 @@ namespace Oxide.Plugins
                 owner.EndLooting();
                 
                 UpdateContent(0);
-                if (!owner.inventory.loot.StartLootingEntity(container, false))
-                    return;
+
+                var loot = owner.inventory.loot;
                 
-                owner.inventory.loot.AddContainer(inventory);
+                loot.Clear();
+                loot.PositionChecks = false;
+                loot.entitySource = null;
+                loot.itemSource = null;
+                loot.MarkDirty();
+                
+                owner.inventory.loot.AddContainer(container);
                 owner.inventory.loot.SendImmediate();
-                owner.ClientRPCPlayer(null, owner, "RPC_OpenLootPanel", container.GetPanelName());
+                owner.ClientRPCPlayer(null, owner, "RPC_OpenLootPanel", "generic");
             }
 
             public bool CanShow()
@@ -488,7 +485,7 @@ namespace Oxide.Plugins
                 if (owner == null || !IsValid())
                     return;
 
-                var item = inventory?.GetSlot(0);
+                var item = container?.GetSlot(0);
                 if (item == null)
                     return;
                 
@@ -497,9 +494,9 @@ namespace Oxide.Plugins
 
             public void Clear()
             {
-                inventory.Clear();
+                container.Clear();
                 ItemManager.DoRemoves();
-                inventory.itemList.Clear();
+                container.itemList.Clear();
             }
 
             public void CloseContainer()
@@ -514,37 +511,40 @@ namespace Oxide.Plugins
                 Destroy(this);
             }
 
-            public bool IsValid() => container != null && container.inventory?.itemList != null;
+            public bool IsValid() => container?.itemList != null;
 
             public void UpdateContent(int page)
             {
                 Clear();
                 
-                if (page < 0 || !IsValid() || inventory.itemList.Count <= 0)
+                if (page < 0 || !IsValid() || container.itemList.Count <= 0)
                     return;
 
-                var item = inventory.GetSlot(0);
+                var item = container.GetSlot(0);
                 List<ulong> skins;
                 if (!_config.Skins.TryGetValue(item.info.shortname, out skins))
                     return;
                 
-                var perPage = inventory.capacity - 1;
+                var perPage = container.capacity - 1;
                 var offset = perPage * page;
                 if (offset >= skins.Count)
                     return;
                 
-                for (var i = 0; i < inventory.itemList.Count; i++)
+                for (var i = 0; i < container.itemList.Count; i++)
                 {
-                    if (i == 0)
+                    if (container.itemList[i].position == 0) // :(
                         continue;
 
-                    inventory.itemList[i].DoRemove();
-                    inventory.itemList.RemoveAt(i);
+                    container.itemList[i].DoRemove();
+                    container.itemList.RemoveAt(i);
                 }
 
                 var slot = 1;
                 for (var i = 0; i < skins.Count; i++)
                 {
+                    if (slot > container.capacity)
+                        break;
+                    
                     if (offset > i)
                         continue;
                     
@@ -555,8 +555,8 @@ namespace Oxide.Plugins
                     newItem.RemoveFromWorld();
                     newItem.position = slot++;
 
-                    newItem.parent = inventory;
-                    inventory.itemList.Add(newItem);
+                    newItem.parent = container;
+                    container.itemList.Add(newItem);
                     foreach (var itemMod in newItem.info.itemMods)
                         itemMod.OnParentChanged(newItem);
                 }
