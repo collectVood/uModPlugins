@@ -3,9 +3,9 @@ using System.Collections.Generic;
 using Newtonsoft.Json;
 using Oxide.Core;
 using Oxide.Core.Libraries.Covalence;
+using Oxide.Game.Rust.Cui;
 using UnityEngine;
 using Component = UnityEngine.Component;
-using Object = UnityEngine.Object;
 
 namespace Oxide.Plugins
 {
@@ -141,45 +141,18 @@ namespace Oxide.Plugins
 
         #region Working With Containers
 
-        private void OnItemAddedToContainer(ItemContainer itemContainer, Item item)
+        private object CanAcceptItem(ItemContainer itemContainer, Item item)
         {
-            /*
-             * TODO:
-             * 1. Clear and refund an item (OnLootEntityEnd)
-             * 2. Add new items
-             */
-
             var container = ContainerController.Find(itemContainer);
             if (container == null)
-                return;
-            
+                return null;
+
+            container.isOpened = true;
             container.GiveItemsBack();
             container.Clear();
             container.ChangeTo(item);
-        }
 
-        private object CanMoveItem(Item item, PlayerInventory playerLoot, uint targetContainer, int targetSlot)
-        {
-            /*
-             * TODO:
-             * 1. Clear and refund an item (OnLootEntityEnd)
-             * 2. Add new items
-             */
-
-            return null;
-        }
-
-        private object CanAcceptItem(ItemContainer container, Item item)
-        {
-            /*
-             * TODO:
-             * 1. Clear and refund an item (OnLootEntityEnd)
-             * 2. Add new items
-             */
-            
-            // WARNING! Need to work on it and CanMoveItem, I don't think I really need this.
-
-            return null;
+            return true;
         }
 
         private void OnItemRemovedFromContainer(ItemContainer itemContainer, Item item)
@@ -203,8 +176,7 @@ namespace Oxide.Plugins
             if (container.container != storageContainer.inventory)
                 return;
             
-            container.GiveItemsBack();
-            container.Clear();
+            container.Close();
         }
 
         #endregion
@@ -242,7 +214,7 @@ namespace Oxide.Plugins
             
             switch (args[0].ToLower())
             {
-                case "_tech-update": // TODO: Usage (UI Buttons)
+                case "_tech-update":
                 {
                     int page;
                     if (args.Length != 2 || !isPlayer || !int.TryParse(args[1], out page))
@@ -394,11 +366,12 @@ namespace Oxide.Plugins
         {
             /*
              * Basic tips:
-             * Item with index 0: Player's skin item
+             * Item with slot 0: Player's skin item
              */
             
             public BasePlayer owner;
             public ItemContainer container = new ItemContainer();
+            public bool isOpened = false;
 
             #region Search
 
@@ -451,6 +424,48 @@ namespace Oxide.Plugins
             }
             
             #endregion
+
+            public void DestroyUi()
+            {
+                CuiHelper.DestroyUi(owner, "Skins.Left");
+                CuiHelper.DestroyUi(owner, "Skins.Right");
+            }
+
+            public void DrawUI(int page)
+            {
+                var elements = new CuiElementContainer();
+                const int slotHeight = 115;
+                const int slotWidth = 115;
+                const int distanceBetweenSlots = 7;
+                const int distanceFromDownCorner = 34;
+                const string midAnchor = "0.5 0.0";
+
+                var back = new CuiElement
+                {
+                    Name = "Skins.Left",
+                    Parent = "Hud",
+                    Components =
+                    {
+                        new CuiImageComponent
+                        {
+                            
+                        },
+                        new CuiRectTransformComponent
+                        {
+                            AnchorMin = midAnchor,
+                            AnchorMax = midAnchor,
+                        }
+                    }
+                };
+            }
+
+            public void Close()
+            {
+                isOpened = false;
+                GiveItemsBack();
+                Clear();
+                DestroyUi();
+            }
 
             public void ChangeTo(Item item)
             {
@@ -507,11 +522,6 @@ namespace Oxide.Plugins
                 container.itemList.Clear();
             }
 
-            public void CloseContainer()
-            {
-                owner.EndLooting();
-            }
-
             public void DoDestroy()
             {
                 GiveItemsBack();
@@ -528,7 +538,8 @@ namespace Oxide.Plugins
                 if (page < 0 || !IsValid() || container.itemList.Count <= 0)
                     return;
                 
-                // TODO: UI goes here. Also check if the container is opened :P
+                if (isOpened)
+                    DrawUI(page);
 
                 var item = container.GetSlot(0);
                 List<ulong> skins;
