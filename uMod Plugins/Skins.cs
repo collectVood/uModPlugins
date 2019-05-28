@@ -20,6 +20,8 @@ namespace Oxide.Plugins
 
         private const string PermissionUse = "skins.use";
         private const string PermissionAdmin = "skins.admin";
+
+        private Coroutine _skinsValidation;
         
         #endregion
 
@@ -79,11 +81,11 @@ namespace Oxide.Plugins
                           "skin show - Show skins\n" +
                           "skin get - Get Skin ID of the item" },
                 { "Admin Help", "Admin command usage:\n" +
-                          "skin show - Show skins\n" +
-                          "skin get - Get Skin ID of the item\n" +
-                          "skin remove (Shortname) (Skin ID) - Remove a skin\n" +
-                          "skin add (Shortname) (Skin ID) - Add a skin\n" +
-                          "skin validate - Validate skins" },
+                                "skin show - Show skins\n" +
+                                "skin get - Get Skin ID of the item\n" +
+                                "skin remove (Shortname) (Skin ID) - Remove a skin\n" +
+                                "skin add (Shortname) (Skin ID) - Add a skin\n" +
+                                "skin validate - Validate skins" },
                 { "Skin Get Format", "{shortname}'s skin: {id}" },
                 { "Skin Get No Item", "Please, hold the needed item" },
                 { "Incorrect Skin", "You have entered an incorrect skin" },
@@ -111,6 +113,8 @@ namespace Oxide.Plugins
                 var container = _controllers[i];
                 OnPlayerDisconnected(container.owner);
             }
+
+            ValidateSkinsStop();
         }
 
         private void OnPlayerInit(Component player)
@@ -606,9 +610,19 @@ namespace Oxide.Plugins
         
         #region Helpers
 
+        private void ValidateSkinsStop()
+        {
+            if (_skinsValidation == null)
+                return;
+            
+            Rust.Global.Runner.StopCoroutine(_skinsValidation);
+            _skinsValidation = null;
+        }
+
         private void ValidateSkinsHelper(IPlayer player)
         {
-            Rust.Global.Runner.StartCoroutine(ValidateSkins(player));
+            ValidateSkinsStop();
+            _skinsValidation = Rust.Global.Runner.StartCoroutine(ValidateSkins(player));
         }
 
         private IEnumerator ValidateSkins(IPlayer player)
