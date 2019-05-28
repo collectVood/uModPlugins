@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using Newtonsoft.Json;
 using Oxide.Core;
@@ -81,14 +82,17 @@ namespace Oxide.Plugins
                           "skin show - Show skins\n" +
                           "skin get - Get Skin ID of the item\n" +
                           "skin remove (Shortname) (Skin ID) - Remove a skin\n" +
-                          "skin add (Shortname) (Skin ID) - Add a skin" },
+                          "skin add (Shortname) (Skin ID) - Add a skin\n" +
+                          "skin validate - Validate skins" },
                 { "Skin Get Format", "{shortname}'s skin: {id}" },
                 { "Skin Get No Item", "Please, hold the needed item" },
                 { "Incorrect Skin", "You have entered an incorrect skin" },
                 { "Skin Already Exists", "This skin already exists on this item" },
                 { "Skin Does Not Exist", "This skin does not exist" },
                 { "Skin Added", "Skin was successfully added" },
-                { "Skin Removed", "Skin was removed" }
+                { "Skin Removed", "Skin was removed" },
+                { "Validation: Started", "Validating skins.." },
+                { "Validation: Ended", "Invalid skins removed: {removed}" }
             }, this);
         }
 
@@ -283,7 +287,6 @@ namespace Oxide.Plugins
                     player.Reply(GetMsg("Skin Added", player.Id));
                     
                     SaveConfig();
-                    
                     break;
                 }
 
@@ -324,7 +327,6 @@ namespace Oxide.Plugins
                     player.Reply(GetMsg("Skin Removed", player.Id));
                     
                     SaveConfig();
-                    
                     break;
                 }
 
@@ -347,6 +349,19 @@ namespace Oxide.Plugins
                     player.Reply(GetMsg("Skin Get Format", player.Id).Replace("{shortname}", item.info.shortname)
                         .Replace("{id}", item.skin.ToString()));
                     
+                    break;
+                }
+
+                case "validate":
+                case "v":
+                {
+                    if (!isAdmin)
+                    {
+                        player.Reply(GetMsg("Not Allowed", player.Id));
+                        break;
+                    }
+                    
+                    ValidateSkinsHelper(player);
                     break;
                 }
 
@@ -433,6 +448,8 @@ namespace Oxide.Plugins
 
             public void DrawUI(int page)
             {
+                // TODO
+                /*
                 var elements = new CuiElementContainer();
                 const int slotHeight = 115;
                 const int slotWidth = 115;
@@ -457,6 +474,7 @@ namespace Oxide.Plugins
                         }
                     }
                 };
+                */
             }
 
             public void Close()
@@ -587,6 +605,38 @@ namespace Oxide.Plugins
         #endregion
         
         #region Helpers
+
+        private void ValidateSkinsHelper(IPlayer player)
+        {
+            Rust.Global.Runner.StartCoroutine(ValidateSkins(player));
+        }
+
+        private IEnumerator ValidateSkins(IPlayer player)
+        {
+            player?.Reply(GetMsg("Validation: Started", player.Id));
+            var removed = 0;
+            
+            foreach (var kvp in _config.Skins)
+            {
+                var query = Rust.Global.SteamServer.Workshop.CreateQuery();
+                query.Page = 1;
+                query.PerPage = kvp.Value.Count;
+                query.FileId = kvp.Value;
+                yield return new WaitWhile(() => query.IsRunning);
+
+                for (var i = 0; i < query.Items.Length; i++)
+                {
+                    var item = query.Items[i];
+                    if (!string.IsNullOrEmpty(item.Title) && !item.Tags.Contains("version2")) continue;
+                    
+                    kvp.Value.Remove(item.Id);
+                    removed++;
+                }
+            }
+
+            player?.Reply(GetMsg("Validation: Ended", player.Id).Replace("{removed}", $"{removed}"));
+            SaveConfig();
+        }
 
         private bool CanUse(string id) => permission.UserHasPermission(id, PermissionUse);
 
