@@ -641,7 +641,7 @@ namespace Oxide.Plugins
                 for (var i = 0; i < query.Items.Length; i++)
                 {
                     var item = query.Items[i];
-                    if (!string.IsNullOrEmpty(item.Title) && !item.Tags.Contains("version2")) continue;
+                    if (!string.IsNullOrEmpty(item.Title) && HasNeededTags(item.Tags)) continue;
                     
                     kvp.Value.Remove(item.Id);
                     removed++;
@@ -650,6 +650,19 @@ namespace Oxide.Plugins
 
             player?.Reply(GetMsg("Validation: Ended", player.Id).Replace("{removed}", $"{removed}"));
             SaveConfig();
+        }
+
+        private bool HasNeededTags(IReadOnlyList<string> tags)
+        {
+            for (var i = 0; i < tags.Count; i++)
+            {
+                var tag = tags[i];
+                
+                if (string.Equals(tag, "version2", StringComparison.CurrentCultureIgnoreCase))
+                    return false;
+            }
+
+            return true;
         }
 
         private bool CanUse(string id) => permission.UserHasPermission(id, PermissionUse);
