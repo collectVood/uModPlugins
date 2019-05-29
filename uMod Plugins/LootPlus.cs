@@ -9,7 +9,7 @@ using Random = System.Random;
 
 namespace Oxide.Plugins
 {
-    [Info("Loot Plus", "Iv Misticos", "2.0.4")]
+    [Info("Loot Plus", "Iv Misticos", "2.0.5")]
     [Description("Modify loot on your server.")]
     public class LootPlus : RustPlugin
     {
