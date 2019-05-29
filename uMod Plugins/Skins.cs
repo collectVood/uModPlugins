@@ -156,8 +156,6 @@ namespace Oxide.Plugins
                 return null;
 
             container.isOpened = true;
-            container.GiveItemsBack();
-            container.Clear();
             container.ChangeTo(item);
 
             return true;
@@ -492,6 +490,13 @@ namespace Oxide.Plugins
             public void ChangeTo(Item item)
             {
                 GiveItemsBack();
+
+                for (var i = 0; i < item.contents.itemList.Count; i++)
+                {
+                    var content = item.contents.itemList[i];
+                    content.MoveToContainer(item.parent);
+                }
+
                 container.Insert(item);
                 UpdateContent(0);
             }
@@ -617,13 +622,6 @@ namespace Oxide.Plugins
                 newItem._maxCondition = item._maxCondition;
                 newItem._condition = item._condition;
                 newItem.contents.capacity = item.contents.capacity;
-
-                for (var i = 0; i < item.contents.itemList.Count; i++)
-                {
-                    var content = item.contents.itemList[i];
-                    newItem.contents.Insert(GetDuplicateItem(content, content.skin));
-                }
-
                 return newItem;
             }
         }
