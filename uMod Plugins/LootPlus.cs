@@ -80,6 +80,9 @@ namespace Oxide.Plugins
             [JsonProperty(PropertyName = "Modify Items")]
             public bool ModifyItems = false;
 
+            [JsonProperty(PropertyName = "Online Condition")]
+            public OnlineData Online = new OnlineData();
+
             [JsonProperty(PropertyName = "Maximal Failures To Add An Item")]
             public int MaxRetries = 5;
             
@@ -152,6 +155,24 @@ namespace Oxide.Plugins
         {
             [JsonProperty(PropertyName = "Capacity")]
             public int Capacity = 3;
+        }
+
+        private class OnlineData
+        {
+            // sorry, dont want anything in config to be "private" :)
+            // ReSharper disable MemberCanBePrivate.Local
+            [JsonProperty(PropertyName = "Minimal Online")]
+            public int MinOnline = -1;
+            
+            [JsonProperty(PropertyName = "Maximal Online")]
+            public int MaxOnline = -1;
+            // ReSharper restore MemberCanBePrivate.Local
+
+            public bool IsOkay()
+            {
+                var online = BasePlayer.activePlayerList.Count;
+                return MinOnline == -1 && MaxOnline == -1 || online > MinOnline && online < MaxOnline;
+            }
         }
 
         public class ChanceData
@@ -541,6 +562,12 @@ namespace Oxide.Plugins
 
         private void HandleInventory(ItemContainer inventory, ContainerData container)
         {
+            if (!container.Online.IsOkay())
+            {
+                PrintDebug("Online check failed");
+                return;
+            }
+            
             var dataCapacity = ChanceData.Select(container.Capacity);
             if (dataCapacity == null)
             {
