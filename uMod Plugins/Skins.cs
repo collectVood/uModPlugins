@@ -170,7 +170,7 @@ namespace Oxide.Plugins
             if (container == null || container.container != itemContainer)
                 return;
 
-            container.Clear(); // I guess it's all okay but needs testing
+            container.Clear(true); // I guess it's all okay but needs testing
         }
 
         private void OnLootEntityEnd(BasePlayer player, BaseCombatEntity entity)
@@ -485,7 +485,7 @@ namespace Oxide.Plugins
             {
                 isOpened = false;
                 GiveItemsBack();
-                Clear();
+                Clear(true);
                 DestroyUi();
             }
 
@@ -537,10 +537,14 @@ namespace Oxide.Plugins
                 owner.GiveItem(item);
             }
 
-            public void Clear()
+            public void Clear(bool removeFirst)
             {
-                container.Clear();
-                ItemManager.DoRemoves();
+                for (var i = removeFirst ? 0 : 1; i < container.itemList.Count; i++)
+                {
+                    var item = container.itemList[i];
+                    item.DoRemove();
+                }
+
                 container.itemList.Clear();
             }
 
@@ -555,7 +559,7 @@ namespace Oxide.Plugins
 
             public void UpdateContent(int page)
             {
-                Clear();
+                Clear(false);
                 
                 if (page < 0 || !IsValid() || container.itemList.Count <= 0)
                     return;
@@ -592,17 +596,35 @@ namespace Oxide.Plugins
                         continue;
                     
                     var skin = skins[i];
-                    var newItem = ItemManager.Create(item.info, item.amount, skin);
+                    var newItem = GetDuplicateItem(item, skin);
                     
                     newItem.RemoveFromContainer();
                     newItem.RemoveFromWorld();
+                    
                     newItem.position = slot++;
-
                     newItem.parent = container;
+                    
                     container.itemList.Add(newItem);
+                    
                     foreach (var itemMod in newItem.info.itemMods)
                         itemMod.OnParentChanged(newItem);
                 }
+            }
+
+            public Item GetDuplicateItem(Item item, ulong skin)
+            {
+                var newItem = ItemManager.Create(item.info, item.amount, skin);
+                newItem._maxCondition = item._maxCondition;
+                newItem._condition = item._condition;
+                newItem.contents.capacity = item.contents.capacity;
+
+                for (var i = 0; i < item.contents.itemList.Count; i++)
+                {
+                    var content = item.contents.itemList[i];
+                    newItem.contents.Insert(GetDuplicateItem(content, content.skin));
+                }
+
+                return newItem;
             }
         }
         
