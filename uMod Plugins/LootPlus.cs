@@ -751,8 +751,6 @@ namespace Oxide.Plugins
                     PrintDebug($"Selected amount: {amount} (Amount: {dataAmount.Amount} / Rate: {dataAmount.Rate})");
 
                     item.amount = amount;
-                    
-                    PrintDebug("Setting up condition..");
 
                     var dataCondition = ChanceData.Select(dataItem.Conditions);
                     if (item.hasCondition)
