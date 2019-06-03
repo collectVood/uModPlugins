@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Newtonsoft.Json;
 using Oxide.Core;
+using Oxide.Core.Libraries.Covalence;
 using Rust;
 using UnityEngine;
 using Random = System.Random;
@@ -19,6 +20,8 @@ namespace Oxide.Plugins
         private readonly int _layerTerrain = LayerMask.NameToLayer("Terrain");
 
         private readonly Random _random = new Random();
+
+        private static PowerSpawn _ins;
         
         #endregion
         
@@ -36,6 +39,12 @@ namespace Oxide.Plugins
 
             [JsonProperty(PropertyName = "Maximum Number Of Attempts To Find A Location")]
             public int AttemptsMax = 200;
+
+            [JsonProperty(PropertyName = "Location Management Command")]
+            public string LocationCommand = "loc";
+
+            [JsonProperty(PropertyName = "Location Management Permission")]
+            public string LocationPermission = "powerspawn.location";
 
             [JsonProperty(PropertyName = "Debug")]
             public bool Debug = false;
@@ -65,12 +74,59 @@ namespace Oxide.Plugins
         protected override void SaveConfig() => Config.WriteObject(_config);
         
         #endregion
+
+        #region Work with Data
+
+        private PluginData _data;
+
+        private class PluginData
+        {
+            
+        }
+
+        private void SaveData() => Interface.Oxide.DataFileSystem.WriteObject(Name, _data);
+
+        private void LoadData()
+        {
+            try
+            {
+                _data = Interface.Oxide.DataFileSystem.ReadObject<PluginData>(Name);
+            }
+            catch (Exception e)
+            {
+                PrintError(e.ToString());
+            }
+
+            if (_data == null) _data = new PluginData();
+        }
+        
+        #endregion
         
         #region Hooks
 
+        protected override void LoadDefaultMessages()
+        {
+            lang.RegisterMessages(new Dictionary<string, string>
+            {
+                { "No Permission", "nope" },
+                { "Location: Syntax", "Location Syntax:\n" +
+                                     "new (Name) - Create a new location with a specified name\n" +
+                                     "delete (ID) - Delete a location with the specified ID\n" +
+                                     "edit (ID) <Parameter 1> <Value> <...> - Edit a location with the specified ID" },
+                { "Location: Edit Syntax", "Location Edit Parameters:\n" +
+                                          "move (x;y;z / here) - Move a location to the specified position\n" +
+                                          "group (ID / reset) - Set group of a location or reset the group" },
+                { "Location: Unable To Parse Position", "Unable to parse the position" }
+            }, this);
+        }
+
         private void OnServerInitialized()
         {
+            _ins = this;
             _worldSize = ConVar.Server.worldsize;
+            LoadData();
+
+            AddCovalenceCommand(_config.LocationCommand, nameof(CommandLocation));
         }
 
         private object OnPlayerRespawn(BasePlayer player)
@@ -90,6 +146,75 @@ namespace Oxide.Plugins
             };
         }
 
+        #endregion
+        
+        #region Commands
+
+        private void CommandLocation(IPlayer player, string command, string[] args)
+        {
+            if (!player.HasPermission(_config.LocationPermission))
+            {
+                player.Reply(GetMsg("No Permission", player.Id));
+                return;
+            }
+        }
+
+        private class CommandLocationData
+        {
+            public IPlayer Player;
+            // TODO: Location
+            
+            private const int FirstArgumentIndex = 2;
+            
+            public void Apply(string[] args)
+            {
+                for (var i = FirstArgumentIndex; i + 1 < args.Length; i += 2)
+                {
+                    switch (args[i])
+                    {
+                        case "move":
+                        {
+                            var position = ParseVector(args[i + 1]);
+                            if (!position.HasValue)
+                            {
+                                Player.Reply(GetMsg("Location: Unable To Parse Position", Player.Id));
+                                break;
+                            }
+                            
+                            // TODO: Set location
+                            break;
+                        }
+
+                        case "group":
+                        {
+                            
+                        }
+                    }
+                }
+            }
+
+            public Vector3? ParseVector(string argument)
+            {
+                var vector = new Vector3();
+                
+                if (argument == "here")
+                {
+                    Player.Position(out vector.x, out vector.y, out vector.z);
+                }
+                else
+                {
+                    var coordinates = argument.Split(';');
+                    if (coordinates.Length != 3 || !float.TryParse(coordinates[0], out vector.x) ||
+                        !float.TryParse(coordinates[1], out vector.y) || !float.TryParse(coordinates[2], out vector.z))
+                    {
+                        return null;
+                    }
+                }
+                
+                return vector;
+            }
+        }
+        
         #endregion
         
         #region Helpers
@@ -148,6 +273,8 @@ namespace Oxide.Plugins
             
             return false;
         }
+
+        private static string GetMsg(string key, string userId = null) => _ins.lang.GetMessage(key, _ins, userId);
 
         #endregion
     }
