@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text;
 using Newtonsoft.Json;
 using Oxide.Core;
 using Oxide.Core.Libraries.Covalence;
@@ -77,11 +78,53 @@ namespace Oxide.Plugins
 
         #region Work with Data
 
-        private PluginData _data;
+        private static PluginData _data;
 
         private class PluginData
         {
+            public List<Location> Locations = new List<Location>();
+
+            public int LastID = 0;
             
+            public class Location
+            {
+                public string Name;
+                public int ID = _data.LastID++;
+                public int Group = -1;
+                public Vector3 Position;
+
+                public string Format(string player)
+                {
+                    var text = new StringBuilder(GetMsg("Location: Format", player));
+                    text.Replace("{name}", Name);
+                    text.Replace("{id}", ID.ToString());
+                    text.Replace("{group}", Group.ToString());
+                    text.Replace("{position}", Position.ToString());
+
+                    return text.ToString();
+                }
+
+                public static int? FindIndex(int id)
+                {
+                    for (var i = 0; i < _data.Locations.Count; i++)
+                    {
+                        if (_data.Locations[i].ID == id)
+                            return i;
+                    }
+
+                    return null;
+                }
+
+                public static IEnumerable<Location> FindByGroup(int group)
+                {
+                    for (var i = 0; i < _data.Locations.Count; i++)
+                    {
+                        var location = _data.Locations[i];
+                        if (location.Group == group)
+                            yield return location;
+                    }
+                }
+            }
         }
 
         private void SaveData() => Interface.Oxide.DataFileSystem.WriteObject(Name, _data);
@@ -116,7 +159,11 @@ namespace Oxide.Plugins
                 { "Location: Edit Syntax", "Location Edit Parameters:\n" +
                                           "move (x;y;z / here) - Move a location to the specified position\n" +
                                           "group (ID / reset) - Set group of a location or reset the group" },
-                { "Location: Unable To Parse Position", "Unable to parse the position" }
+                { "Location: Unable To Parse Position", "Unable to parse the position" },
+                { "Location: Format", "{id} in {group} at {position}: {name}" },
+                { "Location: Not Found", "Sorry, I couldn't find the location you specified." },
+                { "Location: Edit Finished", "Edit was finished." },
+                { "Location: Removed", "Location was removed from our database." }
             }, this);
         }
 
@@ -157,12 +204,94 @@ namespace Oxide.Plugins
                 player.Reply(GetMsg("No Permission", player.Id));
                 return;
             }
+
+            if (args.Length == 0)
+            {
+                goto syntax;
+            }
+
+            switch (args[0])
+            {
+                case "new":
+                {
+                    if (args.Length != 2)
+                    {
+                        goto syntax;
+                    }
+
+                    var location = new PluginData.Location
+                    {
+                        Name = args[1]
+                    };
+
+                    player.Position(out location.Position.x, out location.Position.y, out location.Position.z);
+                    _data.Locations.Add(location);
+                    
+                    player.Reply(location.Format(player.Id));
+                    return;
+                }
+
+                case "delete":
+                {
+                    int id;
+                    if (args.Length != 2 || !int.TryParse(args[1], out id))
+                    {
+                        goto syntax;
+                    }
+
+                    var locationIndex = PluginData.Location.FindIndex(id);
+                    if (!locationIndex.HasValue)
+                    {
+                        player.Reply(GetMsg("Location: Not Found", player.Id));
+                        return;
+                    }
+                    
+                    _data.Locations.RemoveAt(locationIndex.Value);
+                    player.Reply(GetMsg("Location: Removed", player.Id));
+                    return;
+                }
+
+                case "edit":
+                {
+                    int id;
+                    if (args.Length < 4 || !int.TryParse(args[1], out id))
+                    {
+                        goto syntax;
+                    }
+
+                    var locationIndex = PluginData.Location.FindIndex(id);
+                    if (!locationIndex.HasValue)
+                    {
+                        player.Reply(GetMsg("Location: Not Found", player.Id));
+                        return;
+                    }
+
+                    var locationCD = new CommandLocationData
+                    {
+                        Player = player,
+                        Location = _data.Locations[locationIndex.Value]
+                    };
+                    
+                    locationCD.Apply(args);
+                    player.Reply(GetMsg("Location: Edit Finished", player.Id));
+                    return;
+                }
+
+                default:
+                {
+                    goto syntax;
+                }
+            }
+            
+            syntax:
+            player.Reply(GetMsg("Location: Syntax", player.Id));
         }
 
         private class CommandLocationData
         {
             public IPlayer Player;
-            // TODO: Location
+            
+            public PluginData.Location Location;
             
             private const int FirstArgumentIndex = 2;
             
@@ -180,8 +309,8 @@ namespace Oxide.Plugins
                                 Player.Reply(GetMsg("Location: Unable To Parse Position", Player.Id));
                                 break;
                             }
-                            
-                            // TODO: Set location
+
+                            Location.Position = position.Value;
                             break;
                         }
 
