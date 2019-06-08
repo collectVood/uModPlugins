@@ -202,11 +202,18 @@ namespace Oxide.Plugins
                 while (_preGeneratedLocations.Count < _config.PreGenerateAmount)
                 {
                     Vector3? position = null;
-                    while (!position.HasValue)
+                    for (var i = 0; i < _config.AttemptsMax && !position.HasValue; i++)
                     {
                         position = TryFindPosition();
                     }
 
+                    if (!position.HasValue)
+                    {
+                        PrintWarning("Could not pre-generate respawn locations");
+                        Interface.Oxide.UnloadPlugin(Name);
+                        return;
+                    }
+                    
                     _preGeneratedLocations.Add(position.Value);
                 }
             }
