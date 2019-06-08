@@ -56,6 +56,9 @@ namespace Oxide.Plugins
             [JsonProperty(PropertyName = "Pre-Generated Spawn Locations Amount")]
             public int PreGenerateAmount = 100;
 
+            [JsonProperty(PropertyName = "Maximum Number Of Attempts To Find Pre-Generated Spawn Locations")]
+            public int PreGenerateAttempts = 500;
+
             [JsonProperty(PropertyName = "Location Management Command")]
             public string LocationCommand = "loc";
 
@@ -202,7 +205,7 @@ namespace Oxide.Plugins
                 while (_preGeneratedLocations.Count < _config.PreGenerateAmount)
                 {
                     Vector3? position = null;
-                    for (var i = 0; i < _config.AttemptsMax && !position.HasValue; i++)
+                    for (var i = 0; i < _config.PreGenerateAttempts && !position.HasValue; i++)
                     {
                         position = TryFindPosition();
                     }
@@ -425,26 +428,33 @@ namespace Oxide.Plugins
 
         private Vector3? FindPosition()
         {
-            if (_config.PreGenerateSpawn)
+            Vector3? position = null;
+            for (var i = 0; i < _config.AttemptsMax && !position.HasValue; i++)
             {
-                return _preGeneratedLocations[_random.Next(0, _config.PreGenerateAmount)];
-            }
-            
-            if (_config.EnableRespawnGroup)
-            {
-                var locations = PluginData.Location.FindByGroup(_config.RespawnGroup) as List<PluginData.Location>;
-                if (locations.Count != 0)
-                    return locations[_random.Next(0, locations.Count)].Position;
-            }
-            
-            for (var i = 0; i < _config.AttemptsMax; i++)
-            {
-                var position = TryFindPosition();
-                if (position.HasValue)
-                    return position;
+                // Getting position
+                if (_config.PreGenerateSpawn)
+                {
+                    position = _preGeneratedLocations[_random.Next(0, _config.PreGenerateAmount)];
+                }
+                else if (_config.EnableRespawnGroup)
+                {
+                    var locations = PluginData.Location.FindByGroup(_config.RespawnGroup) as List<PluginData.Location>;
+                    if (locations != null && locations.Count != 0)
+                        position = locations[_random.Next(0, locations.Count)].Position;
+                }
+                else
+                {
+                    position = TryFindPosition();
+                }
+
+                if (!position.HasValue) continue;
+                
+                // If it's a "bad" position, continue trying to find a good one.
+                if (CheckBadBuilding(position.Value) || CheckBadCollider(position.Value))
+                    position = null; // :P
             }
 
-            return null;
+            return position;
         }
 
         private Vector3? TryFindPosition()
@@ -456,7 +466,7 @@ namespace Oxide.Plugins
             else
                 return null;
 
-            return CheckBadBuilding(position) || CheckBadCollider(position) ? (Vector3?) null : position;
+            return position;
         }
 
         private int GetRandomPosition() => _random.Next(_worldSize / -2, _worldSize / 2);
