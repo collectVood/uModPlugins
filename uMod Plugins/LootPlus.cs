@@ -251,10 +251,9 @@ namespace Oxide.Plugins
             }
             catch
             {
-                Config.WriteObject(_config, false, $"{Interface.Oxide.ConfigDirectory}/{Name}.jsonError");
-                PrintError("The configuration file contains an error and has been replaced with a default config.\n" +
-                           "The error configuration file was saved in the .jsonError extension");
-                LoadDefaultConfig();
+                PrintError("The configuration file contains an error.");
+                Interface.Oxide.UnloadPlugin(Name);
+                return;
             }
 
             SaveConfig();
