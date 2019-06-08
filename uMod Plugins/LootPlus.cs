@@ -9,7 +9,7 @@ using Random = System.Random;
 
 namespace Oxide.Plugins
 {
-    [Info("Loot Plus", "Iv Misticos", "2.0.5")]
+    [Info("Loot Plus", "Iv Misticos", "2.1.0")]
     [Description("Modify loot on your server.")]
     public class LootPlus : RustPlugin
     {
@@ -204,7 +204,6 @@ namespace Oxide.Plugins
                     sum1 += entry?.Chance ?? 0;
                 }
 
-                PrintDebug($"Sum: {sum1}");
                 if (sum1 < 1)
                 {
                     PrintDebug("Sum is less than 1");
@@ -218,7 +217,7 @@ namespace Oxide.Plugins
                     return null;
                 }
                 
-                PrintDebug($"Selected random: {random}");
+                PrintDebug($"Selected random: {random}; Sum: {sum1}");
                 
                 var sum2 = 0;
                 for (var i = 0; i < data.Count; i++)
@@ -498,12 +497,38 @@ namespace Oxide.Plugins
             }
         }
 
+        /*
         private void OnLootSpawn(StorageContainer container)
         {
             if (!_initialized)
                 return;
             
             NextFrame(() => LootPlusController.Instance.StartCoroutine(LootHandler(container)));
+        }
+        */
+
+        private void OnEntitySpawned(BaseNetworkable entity)
+        {
+            if (!_initialized)
+                return;
+            
+            var corpse = entity as LootableCorpse;
+            if (corpse != null)
+            {
+                PrintDebug($"{entity.ShortPrefabName} is a corpse");
+                foreach (var inventory in corpse.containers)
+                {
+                    RunLootHandler(inventory);
+                }
+            }
+
+            var storageContainer = entity as StorageContainer;
+            // ReSharper disable once InvertIf
+            if (storageContainer != null)
+            {
+                PrintDebug($"{entity.ShortPrefabName} is a storage container");
+                RunLootHandler(storageContainer.inventory);
+            }
         }
 
         #endregion
@@ -533,46 +558,61 @@ namespace Oxide.Plugins
         
         #region Helpers
 
-        private IEnumerator LootHandler(StorageContainer entity)
+        private void RunLootHandler(ItemContainer inventory)
         {
-            if (entity == null)
+            NextFrame(() => LootPlusController.Instance.StartCoroutine(LootHandler(inventory)));
+        }
+
+        private IEnumerator LootHandler(ItemContainer inventory)
+        {
+            if (inventory == null)
                 yield break;
 
             for (var i = 0; i < _config.Containers.Count; i++)
             {
                 var container = _config.Containers[i];
-                if (container.Shortname != "global" && container.Shortname != entity.ShortPrefabName)
+                if (container.Shortname != "global" && container.Shortname != inventory.entityOwner.ShortPrefabName)
                     continue;
 
-                HandleContainer(entity, container);
+                yield return HandleInventory(inventory, container);
             }
         }
 
-        private void HandleContainer(StorageContainer entity, ContainerData container)
+        /*
+        private void HandleContainer(ItemContainer itemContainer, ContainerData container)
         {
             PrintDebug(
-                $"Handling container {entity.ShortPrefabName} ({entity.net.ID} @ {entity.transform.position})");
+                $"Handling container {itemContainer.entityOwner.ShortPrefabName} ({itemContainer.entityOwner.net.ID} @ {itemContainer.entityOwner.transform.position})");
 
             if (_config.ShuffleItems && !container.ModifyItems) // No need to shuffle for items modification
                 container.Items?.Shuffle();
 
-            entity.inventory.capacity = entity.inventory.itemList.Count;
-            HandleInventory(entity.inventory, container);
+            itemContainer.capacity = itemContainer.itemList.Count;
+            HandleInventory(itemContainer, container);
         }
+        */
 
-        private void HandleInventory(ItemContainer inventory, ContainerData container)
+        private IEnumerator HandleInventory(ItemContainer inventory, ContainerData container)
         {
+            PrintDebug(
+                $"Handling container {inventory.entityOwner.ShortPrefabName} ({inventory.entityOwner.net.ID} @ {inventory.entityOwner.transform.position})");
+
+            if (_config.ShuffleItems && !container.ModifyItems) // No need to shuffle for items modification
+                container.Items?.Shuffle();
+
+            inventory.capacity = inventory.itemList.Count;
+            
             if (!container.Online.IsOkay())
             {
                 PrintDebug("Online check failed");
-                return;
+                yield break;
             }
             
             var dataCapacity = ChanceData.Select(container.Capacity);
             if (dataCapacity == null)
             {
                 PrintDebug("Could not select a correct capacity");
-                return;
+                yield break;
             }
             
             PrintDebug($"Items: {inventory.itemList.Count} / {inventory.capacity}");
@@ -580,7 +620,7 @@ namespace Oxide.Plugins
             if (!((container.AddItems || container.ReplaceItems) ^ container.ModifyItems))
             {
                 PrintWarning("Multiple options (Add / Replace / Modify) are selected");
-                return;
+                yield break;
             }
 
             if (container.ReplaceItems)
@@ -588,30 +628,32 @@ namespace Oxide.Plugins
                 inventory.Clear();
                 ItemManager.DoRemoves();
                 inventory.capacity = dataCapacity.Capacity;
-                HandleInventoryAddReplace(inventory, container);
-                return;
+                yield return HandleInventoryAddReplace(inventory, container);
+                yield break;
             }
             
             if (container.AddItems)
             {
                 inventory.capacity += dataCapacity.Capacity;
-                HandleInventoryAddReplace(inventory, container);
-                return;
+                yield return HandleInventoryAddReplace(inventory, container);
+                yield break;
             }
 
             if (container.ModifyItems)
             {
-                HandleInventoryModify(inventory, container);
+                yield return HandleInventoryModify(inventory, container);
             }
         }
 
-        private static void HandleInventoryAddReplace(ItemContainer inventory, ContainerData container)
+        private static IEnumerator HandleInventoryAddReplace(ItemContainer inventory, ContainerData container)
         {
             PrintDebug("Using add or replace");
             
             var failures = 0;
             while (inventory.itemList.Count < inventory.capacity)
             {
+                yield return null;
+                
                 PrintDebug($"Count: {inventory.itemList.Count} / {inventory.capacity}");
 
                 var dataItem = ChanceData.Select(container.Items);
@@ -627,13 +669,11 @@ namespace Oxide.Plugins
 
                 if (!_config.DuplicateItems) // Duplicate items are not allowed
                 {
-                    PrintDebug("Searching for duplicates..");
-
                     if (IsDuplicate(inventory.itemList, dataItem, skin))
                     {
                         if (++failures > container.MaxRetries)
                         {
-                            PrintDebug("Too many failures");
+                            PrintDebug("Stopping because of duplicates");
                             break;
                         }
 
@@ -657,7 +697,7 @@ namespace Oxide.Plugins
                 if (dataAmount.Rate > 0f)
                     amount = (int) (dataAmount.Rate * amount);
                 
-                PrintDebug($"Selected amount: {amount} (Amount: {dataAmount.Amount} / Rate: {dataAmount.Rate})");
+                PrintDebug($"Creating with amount: {amount} (Amount: {dataAmount.Amount} / Rate: {dataAmount.Rate})");
 
                 var definition =
                     ItemManager.FindItemDefinition(dataItem.IsBlueprint ? "blueprintbase" : dataItem.Shortname);
@@ -680,8 +720,6 @@ namespace Oxide.Plugins
                 }
                 else
                 {
-                    PrintDebug("Setting up condition..");
-
                     var dataCondition = ChanceData.Select(dataItem.Conditions);
                     if (createdItem.hasCondition)
                     {
@@ -704,8 +742,6 @@ namespace Oxide.Plugins
                 if (!string.IsNullOrEmpty(dataItem.Name))
                     createdItem.name = dataItem.Name;
 
-                PrintDebug("Moving item to container..");
-
                 var moved = createdItem.MoveToContainer(inventory, allowStack: dataItem.AllowStacking);
                 if (moved) continue;
 
@@ -713,7 +749,7 @@ namespace Oxide.Plugins
             }
         }
 
-        private static void HandleInventoryModify(ItemContainer inventory, ContainerData container)
+        private static IEnumerator HandleInventoryModify(ItemContainer inventory, ContainerData container)
         {
             PrintDebug("Using modify");
             
@@ -722,6 +758,8 @@ namespace Oxide.Plugins
                 var item = inventory.itemList[i];
                 for (var j = 0; j < container.Items.Count; j++)
                 {
+                    yield return null;
+
                     var dataItem = container.Items[j];
                     if (dataItem.Shortname != "global" && dataItem.Shortname != item.info.shortname ||
                         dataItem.IsBlueprint != item.IsBlueprint())
@@ -789,7 +827,7 @@ namespace Oxide.Plugins
                     return true;
                 }
 
-                if (item.info.shortname != dataItem.Shortname) continue;
+                if (item.IsBlueprint() || item.info.shortname != dataItem.Shortname) continue;
                 if (_config.DuplicateItemsDifferentSkins && item.skin != skin)
                     continue;
 
@@ -810,12 +848,12 @@ namespace Oxide.Plugins
 
         private void LootRefill()
         {
-            var containers = UnityEngine.Object.FindObjectsOfType<LootContainer>();
-            var containersCount = containers.Length;
-            for (var i = 0; i < containersCount; i++)
+            using (var enumerator = BaseNetworkable.serverEntities.GetEnumerator())
             {
-                var container = containers[i];
-                LootPlusController.Instance.StartCoroutine(LootHandler(container));
+                while (enumerator.MoveNext())
+                {
+                    OnEntitySpawned(enumerator.Current);
+                }
             }
         }
         
