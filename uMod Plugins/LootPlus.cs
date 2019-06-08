@@ -70,6 +70,12 @@ namespace Oxide.Plugins
         {
             [JsonProperty(PropertyName = "Entity Shortname")]
             public string Shortname = "entity.shortname";
+            
+            [JsonProperty(PropertyName = "Monument Prefab (Empty To Ignore)")]
+            public string Monument = "";
+            
+            [JsonProperty(PropertyName = "Item Container Indexes", ObjectCreationHandling = ObjectCreationHandling.Replace)]
+            public List<int> ContainerIndexes = new List<int> {0};
 
             [JsonProperty(PropertyName = "Replace Items")]
             public bool ReplaceItems = true;
@@ -516,9 +522,10 @@ namespace Oxide.Plugins
             if (corpse != null)
             {
                 PrintDebug($"{entity.ShortPrefabName} is a corpse");
-                foreach (var inventory in corpse.containers)
+                for (var i = 0; i < corpse.containers.Length; i++)
                 {
-                    RunLootHandler(inventory);
+                    var inventory = corpse.containers[i];
+                    RunLootHandler(entity, inventory, i);
                 }
             }
 
@@ -527,7 +534,7 @@ namespace Oxide.Plugins
             if (storageContainer != null)
             {
                 PrintDebug($"{entity.ShortPrefabName} is a storage container");
-                RunLootHandler(storageContainer.inventory);
+                RunLootHandler(entity, storageContainer.inventory, -1);
             }
         }
 
@@ -558,12 +565,12 @@ namespace Oxide.Plugins
         
         #region Helpers
 
-        private void RunLootHandler(ItemContainer inventory)
+        private void RunLootHandler(BaseNetworkable networkable, ItemContainer inventory, int containerIndex)
         {
-            NextFrame(() => LootPlusController.Instance.StartCoroutine(LootHandler(inventory)));
+            NextFrame(() => LootPlusController.Instance.StartCoroutine(LootHandler(networkable, inventory, containerIndex)));
         }
 
-        private IEnumerator LootHandler(ItemContainer inventory)
+        private IEnumerator LootHandler(BaseNetworkable networkable, ItemContainer inventory, int containerIndex)
         {
             if (inventory == null)
                 yield break;
@@ -571,10 +578,26 @@ namespace Oxide.Plugins
             for (var i = 0; i < _config.Containers.Count; i++)
             {
                 var container = _config.Containers[i];
-                if (container.Shortname != "global" && container.Shortname != inventory.entityOwner.ShortPrefabName)
+                if (container.Shortname != "global" && container.Shortname != networkable.ShortPrefabName)
                     continue;
 
-                yield return HandleInventory(inventory, container);
+                if (containerIndex != -1 && !container.ContainerIndexes.Contains(containerIndex))
+                {
+                    continue;
+                }
+
+                if (!string.IsNullOrEmpty(container.Monument))
+                {
+                    var monument = GetMonumentName(networkable.transform.position);
+                    PrintDebug($"Found monument: {monument}");
+                    
+                    if (monument != container.Monument)
+                    {
+                        continue;
+                    }
+                }
+
+                yield return HandleInventory(networkable, inventory, container);
             }
         }
 
@@ -592,10 +615,10 @@ namespace Oxide.Plugins
         }
         */
 
-        private IEnumerator HandleInventory(ItemContainer inventory, ContainerData container)
+        private IEnumerator HandleInventory(BaseNetworkable networkable, ItemContainer inventory, ContainerData container)
         {
             PrintDebug(
-                $"Handling container {inventory.entityOwner.ShortPrefabName} ({inventory.entityOwner.net.ID} @ {inventory.entityOwner.transform.position})");
+                $"Handling container {networkable.ShortPrefabName} ({networkable.net.ID} @ {networkable.transform.position})");
 
             if (_config.ShuffleItems && !container.ModifyItems) // No need to shuffle for items modification
                 container.Items?.Shuffle();
@@ -855,6 +878,19 @@ namespace Oxide.Plugins
                     OnEntitySpawned(enumerator.Current);
                 }
             }
+        }
+
+        private string GetMonumentName(Vector3 position)
+        {
+            var monuments = TerrainMeta.Path.Monuments;
+            foreach (var monument in monuments)
+            {
+                var obb = new OBB(monument.transform.position, Quaternion.identity, monument.Bounds);
+                if (obb.Contains(position))
+                    return monument.name;
+            }
+
+            return string.Empty;
         }
         
         #endregion
