@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using Oxide.Core;
 using Oxide.Core.Libraries.Covalence;
 using Rust;
@@ -10,7 +11,7 @@ using Random = System.Random;
 
 namespace Oxide.Plugins
 {
-    [Info("Power Spawn", "Iv Misticos", "1.0.3")]
+    [Info("Power Spawn", "Iv Misticos", "1.1.0")]
     [Description("Control players' spawning")]
     class PowerSpawn : RustPlugin
     {
@@ -23,6 +24,8 @@ namespace Oxide.Plugins
         private readonly Random _random = new Random();
 
         private static PowerSpawn _ins;
+
+        private static List<Vector3> _preGeneratedLocations = new List<Vector3>();
         
         #endregion
         
@@ -40,6 +43,18 @@ namespace Oxide.Plugins
 
             [JsonProperty(PropertyName = "Maximum Number Of Attempts To Find A Location")]
             public int AttemptsMax = 200;
+
+            [JsonProperty(PropertyName = "Respawn Locations Group")]
+            public int RespawnGroup = -2;
+
+            [JsonProperty(PropertyName = "Enable Respawn Locations")]
+            public bool EnableRespawnGroup = false;
+
+            [JsonProperty(PropertyName = "Pre-Generate Spawn Locations")]
+            public bool PreGenerateSpawn = false;
+
+            [JsonProperty(PropertyName = "Pre-Generated Spawn Locations Amount")]
+            public int PreGenerateAmount = 100;
 
             [JsonProperty(PropertyName = "Location Management Command")]
             public string LocationCommand = "loc";
@@ -127,7 +142,7 @@ namespace Oxide.Plugins
             }
         }
 
-        private void SaveData() => Interface.Oxide.DataFileSystem.WriteObject(Name, _data);
+        private static void SaveData() => Interface.Oxide.DataFileSystem.WriteObject(_ins.Name, _data);
 
         private void LoadData()
         {
@@ -160,10 +175,12 @@ namespace Oxide.Plugins
                                           "move (x;y;z / here) - Move a location to the specified position\n" +
                                           "group (ID / reset) - Set group of a location or reset the group" },
                 { "Location: Unable To Parse Position", "Unable to parse the position" },
+                { "Location: Unable To Parse Group", "Unable to parse the entered group" },
                 { "Location: Format", "{id} in {group} at {position}: {name}" },
                 { "Location: Not Found", "Sorry, I couldn't find the location you specified." },
                 { "Location: Edit Finished", "Edit was finished." },
-                { "Location: Removed", "Location was removed from our database." }
+                { "Location: Removed", "Location was removed from our database." },
+                { "Generated Respawn Locations", "Location was removed from our database." }
             }, this);
         }
 
@@ -173,6 +190,28 @@ namespace Oxide.Plugins
             _worldSize = ConVar.Server.worldsize;
             LoadData();
 
+            if (_config.PreGenerateSpawn)
+            {
+                if (_config.EnableRespawnGroup)
+                {
+                    PrintError("Cannot use both pre-generated spawn locations and respawn group. Disable one of them.");
+                    Interface.Oxide.UnloadPlugin(Name);
+                    return;
+                }
+                
+                while (_preGeneratedLocations.Count < _config.PreGenerateAmount)
+                {
+                    Vector3? position = null;
+                    while (!position.HasValue)
+                    {
+                        position = TryFindPosition();
+                    }
+
+                    _preGeneratedLocations.Add(position.Value);
+                }
+            }
+
+            permission.RegisterPermission(_config.LocationPermission, this);
             AddCovalenceCommand(_config.LocationCommand, nameof(CommandLocation));
         }
 
@@ -316,13 +355,23 @@ namespace Oxide.Plugins
 
                         case "group":
                         {
-                            
+                            int group = -1;
+                            if (args[i + 1] != "reset" && !int.TryParse(args[i + 1], out group))
+                            {
+                                Player.Reply(GetMsg("Location: Unable To Parse Group", Player.Id));
+                                break;
+                            }
+
+                            Location.Group = group;
+                            break;
                         }
                     }
                 }
+
+                SaveData();
             }
 
-            public Vector3? ParseVector(string argument)
+            private Vector3? ParseVector(string argument)
             {
                 var vector = new Vector3();
                 
@@ -346,10 +395,41 @@ namespace Oxide.Plugins
         
         #endregion
         
+        #region API
+
+        private Vector3? GetLocation(int id)
+        {
+            var locationIndex = PluginData.Location.FindIndex(id);
+            if (!locationIndex.HasValue)
+                return null;
+
+            return _data.Locations[locationIndex.Value].Position;
+        }
+
+        private JObject GetGroupLocations(int group)
+        {
+            var locations = PluginData.Location.FindByGroup(group) as List<PluginData.Location>;
+            return JObject.FromObject(locations);
+        }
+        
+        #endregion
+        
         #region Helpers
 
         private Vector3? FindPosition()
         {
+            if (_config.PreGenerateSpawn)
+            {
+                return _preGeneratedLocations[_random.Next(0, _config.PreGenerateAmount)];
+            }
+            
+            if (_config.EnableRespawnGroup)
+            {
+                var locations = PluginData.Location.FindByGroup(_config.RespawnGroup) as List<PluginData.Location>;
+                if (locations.Count != 0)
+                    return locations[_random.Next(0, locations.Count)].Position;
+            }
+            
             for (var i = 0; i < _config.AttemptsMax; i++)
             {
                 var position = TryFindPosition();
