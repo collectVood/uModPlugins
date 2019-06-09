@@ -54,7 +54,7 @@ namespace Oxide.Plugins
             public bool PreGenerateSpawn = false;
 
             [JsonProperty(PropertyName = "Pre-Generated Spawn Locations Amount")]
-            public int PreGenerateAmount = 100;
+            public int PreGenerateAmount = 1000;
 
             [JsonProperty(PropertyName = "Maximum Number Of Attempts To Find Pre-Generated Spawn Locations")]
             public int PreGenerateAttempts = 500;
