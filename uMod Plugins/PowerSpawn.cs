@@ -174,7 +174,10 @@ namespace Oxide.Plugins
                 { "Location: Syntax", "Location Syntax:\n" +
                                      "new (Name) - Create a new location with a specified name\n" +
                                      "delete (ID) - Delete a location with the specified ID\n" +
-                                     "edit (ID) <Parameter 1> <Value> <...> - Edit a location with the specified ID" },
+                                     "edit (ID) <Parameter 1> <Value> <...> - Edit a location with the specified ID\n" +
+                                     "update - Apply datafile changes\n" +
+                                     "list - Get a list of locations\n" +
+                                     "validate (ID) - Validate location for buildings and colliders" },
                 { "Location: Edit Syntax", "Location Edit Parameters:\n" +
                                           "move (x;y;z / here) - Move a location to the specified position\n" +
                                           "group (ID / reset) - Set group of a location or reset the group" },
@@ -184,7 +187,9 @@ namespace Oxide.Plugins
                 { "Location: Not Found", "Sorry, I couldn't find the location you specified." },
                 { "Location: Edit Finished", "Edit was finished." },
                 { "Location: Removed", "Location was removed from our database." },
-                { "Generated Respawn Locations", "Location was removed from our database." }
+                { "Location: Updated", "Datafile changes were applied." },
+                { "Location: Validation Format", "Buildings invalid: {buildings}; Colliders invalid: {colliders}" },
+                { "Generated Respawn Locations", "We have pre-generated respawn locations ({count})" }
             }, this);
         }
 
@@ -333,6 +338,54 @@ namespace Oxide.Plugins
                     locationCD.Apply(args);
                     player.Reply(GetMsg("Location: Edit Finished", player.Id));
                     goto saveData;
+                }
+
+                case "update":
+                case "u":
+                {
+                    LoadData();
+                    player.Reply(GetMsg("Location: Updated", player.Id));
+                    return;
+                }
+
+                case "list":
+                case "l":
+                {
+                    var table = new TextTable();
+                    table.AddColumns("ID", "Name", "Group", "Position");
+
+                    foreach (var location in _data.Locations)
+                    {
+                        table.AddRow(location.ID.ToString(), location.Name, location.Group.ToString(), location.Position.ToString());
+                    }
+
+                    player.Reply(table.ToString());
+                    return;
+                }
+
+                case "valid":
+                case "validate":
+                case "v":
+                {
+                    int id;
+                    if (args.Length < 2 || !int.TryParse(args[1], out id))
+                    {
+                        player.Reply(GetMsg("Location: Syntax", player.Id));
+                        return;
+                    }
+                    
+                    var locationIndex = PluginData.Location.FindIndex(id);
+                    if (!locationIndex.HasValue)
+                    {
+                        player.Reply(GetMsg("Location: Not Found", player.Id));
+                        return;
+                    }
+
+                    var location = _data.Locations[locationIndex.Value];
+                    player.Reply(GetMsg("Location: Validation Format", player.Id)
+                        .Replace("{buildings}", CheckBadBuilding(location.Position).ToString())
+                        .Replace("{colliders}", CheckBadCollider(location.Position).ToString()));
+                    return;
                 }
 
                 default:
