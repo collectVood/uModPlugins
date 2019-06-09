@@ -88,10 +88,23 @@ namespace Oxide.Plugins
                 public string Password;
 
                 [JsonIgnore] public IPlayer Player;
+                
+                [JsonIgnore] public Request Request;
 
                 public User()
                 {
                     Player = _ins.players.FindPlayerById(ID);
+                }
+
+                public User Find(string id)
+                {
+                    foreach (var user in _data.Users)
+                    {
+                        if (user.ID == id)
+                            return user;
+                    }
+
+                    return null;
                 }
             }
 
@@ -168,11 +181,12 @@ namespace Oxide.Plugins
         {
             lang.RegisterMessages(new Dictionary<string, string>
             {
-                { "Password Request", "Type /auth [password] in the following {timeout} seconds to authenticate or you'll be kicked." },
+                { "Password Request", "Type /auth use [password] in the following {timeout} seconds to authenticate or you'll be kicked." },
                 { "Authentication Timed Out", "You took too long to authenticate." },
                 { "Authentication Exceeded Retries", "You have exceeded the maximum amount of retries." },
                 { "Authentication Successful", "You have successfully authenticated." },
                 { "Incorrect Password", "This password is NOT correct." },
+                { "Already Authenticated", "You have already authenticated." },
                 { "Plugin Disabled", "This feature is unavailable." }
             }, this);
         }
@@ -182,12 +196,19 @@ namespace Oxide.Plugins
             permission.RegisterPermission("authentication.edit", this);
 		    
             AddCovalenceCommand(_config.Command, "CommandAuth");
+            
+            // TODO: Iterate through all the guys on the server
         }
+        
+        // TODO: On player joined
 
         private object OnPlayerChat(ConsoleSystem.Arg arg)
         {
+            // TODO: Block chat
             return null;
         }
+        
+        // TODO: Better Chat support
 	    
         #endregion
 		
@@ -200,6 +221,8 @@ namespace Oxide.Plugins
                 player.Reply(GetMsg("Plugin Disabled", player.Id));
                 return;
             }
+            
+            // TODO: Switch for setting a password, authenticating, etc
         }
 		
         #endregion
