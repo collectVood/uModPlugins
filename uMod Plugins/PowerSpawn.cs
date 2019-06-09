@@ -96,12 +96,13 @@ namespace Oxide.Plugins
 
         #region Work with Data
 
-        private static PluginData _data;
+        private static PluginData _data = new PluginData();
 
         private class PluginData
         {
             public List<Location> Locations = new List<Location>();
 
+            // ReSharper disable once MemberCanBePrivate.Local
             public int LastID = 0;
             
             public class Location
@@ -179,7 +180,7 @@ namespace Oxide.Plugins
                                           "group (ID / reset) - Set group of a location or reset the group" },
                 { "Location: Unable To Parse Position", "Unable to parse the position" },
                 { "Location: Unable To Parse Group", "Unable to parse the entered group" },
-                { "Location: Format", "{id} in {group} at {position}: {name}" },
+                { "Location: Format", "Location ID: {id}; Group: {group}; Position: {position}; Name: {name}" },
                 { "Location: Not Found", "Sorry, I couldn't find the location you specified." },
                 { "Location: Edit Finished", "Edit was finished." },
                 { "Location: Removed", "Location was removed from our database." },
@@ -219,6 +220,8 @@ namespace Oxide.Plugins
                     
                     _preGeneratedLocations.Add(position.Value);
                 }
+                
+                Puts(GetMsg("Generated Respawn Locations").Replace("{count}", _preGeneratedLocations.Count.ToString()));
             }
 
             permission.RegisterPermission(_config.LocationPermission, this);
@@ -262,6 +265,7 @@ namespace Oxide.Plugins
             switch (args[0])
             {
                 case "new":
+                case "n":
                 {
                     if (args.Length != 2)
                     {
@@ -277,10 +281,13 @@ namespace Oxide.Plugins
                     _data.Locations.Add(location);
                     
                     player.Reply(location.Format(player.Id));
-                    return;
+                    goto saveData;
                 }
 
                 case "delete":
+                case "remove":
+                case "d":
+                case "r":
                 {
                     int id;
                     if (args.Length != 2 || !int.TryParse(args[1], out id))
@@ -297,15 +304,17 @@ namespace Oxide.Plugins
                     
                     _data.Locations.RemoveAt(locationIndex.Value);
                     player.Reply(GetMsg("Location: Removed", player.Id));
-                    return;
+                    goto saveData;
                 }
 
                 case "edit":
+                case "e":
                 {
                     int id;
                     if (args.Length < 4 || !int.TryParse(args[1], out id))
                     {
-                        goto syntax;
+                        player.Reply(GetMsg("Location: Edit Syntax", player.Id));
+                        return;
                     }
 
                     var locationIndex = PluginData.Location.FindIndex(id);
@@ -323,7 +332,7 @@ namespace Oxide.Plugins
                     
                     locationCD.Apply(args);
                     player.Reply(GetMsg("Location: Edit Finished", player.Id));
-                    return;
+                    goto saveData;
                 }
 
                 default:
@@ -334,6 +343,10 @@ namespace Oxide.Plugins
             
             syntax:
             player.Reply(GetMsg("Location: Syntax", player.Id));
+            return;
+            
+            saveData:
+            SaveData();
         }
 
         private class CommandLocationData
@@ -418,7 +431,7 @@ namespace Oxide.Plugins
 
         private JObject GetGroupLocations(int group)
         {
-            var locations = PluginData.Location.FindByGroup(group) as List<PluginData.Location>;
+            var locations = PluginData.Location.FindByGroup(group);
             return JObject.FromObject(locations);
         }
         
@@ -438,9 +451,17 @@ namespace Oxide.Plugins
                 }
                 else if (_config.EnableRespawnGroup)
                 {
-                    var locations = PluginData.Location.FindByGroup(_config.RespawnGroup) as List<PluginData.Location>;
-                    if (locations != null && locations.Count != 0)
-                        position = locations[_random.Next(0, locations.Count)].Position;
+                    var locationsEn = PluginData.Location.FindByGroup(_config.RespawnGroup);
+                    if (locationsEn == null)
+                        continue;
+                    
+                    var locations = new List<PluginData.Location>(locationsEn);
+                    if (locations.Count != 0)
+                    {
+                        var location = locations[_random.Next(0, locations.Count)];
+                        PrintDebug($"Using location {location.Name}");
+                        position = location.Position;
+                    }
                 }
                 else
                 {
@@ -448,6 +469,8 @@ namespace Oxide.Plugins
                 }
 
                 if (!position.HasValue) continue;
+                
+                PrintDebug($"Found position: {position.Value}");
                 
                 // If it's a "bad" position, continue trying to find a good one.
                 if (CheckBadBuilding(position.Value) || CheckBadCollider(position.Value))
