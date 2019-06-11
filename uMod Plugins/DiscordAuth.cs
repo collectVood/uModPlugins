@@ -12,10 +12,12 @@ using Time = Oxide.Core.Libraries.Time;
 
 namespace Oxide.Plugins
 {
-    [Info("Discord Auth", "Iv Misticos", "1.0.1")]
+    [Info("Discord Auth", "Iv Misticos", "1.0.2")]
     [Description("Discord account connection with API")]
     public class DiscordAuth : CovalencePlugin
     {
+        #region Variables
+        
         [DiscordClient]
 #pragma warning disable 649
         private DiscordClient _client;
@@ -28,6 +30,8 @@ namespace Oxide.Plugins
         private static DiscordAuth _ins;
 
         private static Time _time = GetLibrary<Time>();
+        
+        #endregion
 
         #region Configuration
 
@@ -196,6 +200,7 @@ namespace Oxide.Plugins
                 {"Log", "{discordName} ({discordId}) has authenticated his account to in-game {gameName} ({gameId})"},
                 {"Discord Overwrite", "Your old connection with this Discord account will be overwritten!"},
                 {"In-Game Overwrite", "Your old connection with this in-game account will be overwritten!"},
+                {"Authentication Denied By Plugin", "Your authentication was denied by a plugin"}
             }, this);
         }
 
@@ -239,8 +244,6 @@ namespace Oxide.Plugins
             AddCovalenceCommand(_config.Command, "CommandAuth");
             
             LoadData();
-
-//            new GameObject().AddComponent<ExpirationController>();
             timer.Every(1f, DoExpiration);
         }
 
@@ -248,7 +251,6 @@ namespace Oxide.Plugins
 
         private void Unload()
         {
-//            UnityEngine.Object.Destroy(ExpirationController.Instance.gameObject);
             SaveData();
             Discord.CloseClient(_client);
         }
@@ -291,6 +293,13 @@ namespace Oxide.Plugins
                     return;
                 }
 
+                var canAuthenticate = Interface.Oxide.CallHook("CanDiscordAuthenticate", info.Key, message.author.id);
+                if (canAuthenticate is bool && !(bool) canAuthenticate)
+                {
+                    channel.CreateMessage(_client, GetMsg("Authentication Denied By Plugin", info.Player.Id));
+                    return;
+                }
+
                 // Already authenticated-check
                 var data1 = PlayerData.FindByGame(info.Player.Id);
                 var data2 = PlayerData.FindByDiscord(message.author.id);
@@ -304,12 +313,18 @@ namespace Oxide.Plugins
                     if (data1 != null)
                     {
                         channel.CreateMessage(_client, GetMsg("In-Game Overwrite", info.Player.Id));
+                        Interface.Oxide.CallHook("OnDiscordAuthOverwrite", data1.GameId, info.Key, data1.DiscordId,
+                            message.author.id);
+                        
                         _data.Remove(data1);
                     }
 
                     if (data2 != null)
                     {
                         channel.CreateMessage(_client, GetMsg("Discord Overwrite", info.Player.Id));
+                        Interface.Oxide.CallHook("OnDiscordAuthOverwrite", data2.GameId, info.Key, data2.DiscordId,
+                            message.author.id);
+                        
                         _data.Remove(data2);
                     }
                 }
@@ -327,6 +342,8 @@ namespace Oxide.Plugins
                     new StringBuilder(GetMsg("Log")).Replace("{discordName}", message.author.username)
                         .Replace("{discordId}", message.author.id).Replace("{gameId}", info.Player.Id)
                         .Replace("{gameName}", info.Player.Name).ToString());
+
+                Interface.Oxide.CallHook("OnDiscordAuthenticate", info.Key, message.author.id);
             });
         }
 
@@ -384,34 +401,6 @@ namespace Oxide.Plugins
                 _keys.RemoveAt(i);
             }
         }
-
-//        private class ExpirationController : MonoBehaviour
-//        {
-//            public static ExpirationController Instance;
-//
-//            private void Awake()
-//            {
-//                if (Instance != null)
-//                    Destroy(Instance.gameObject);
-//
-//                Instance = this;
-//                
-//                InvokeRepeating(DoExpiration, 1f, 1f);
-//            }
-//
-//            private void DoExpiration()
-//            {
-//                var time = _time.GetUnixTimestamp();
-//                for (var i = _keys.Count - 1; i >= 0; i--)
-//                {
-//                    var key = _keys[i];
-//                    if (key.ValidUntil > time) continue;
-//                    
-//                    key.ExpireMessage();
-//                    _keys.RemoveAt(i);
-//                }
-//            }
-//        }
         
         #endregion
 
