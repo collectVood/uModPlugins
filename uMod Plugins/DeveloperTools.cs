@@ -16,6 +16,8 @@ namespace Oxide.Plugins
             AddCovalenceCommand("dtcomponents", nameof(CommandGetComponents));
             AddCovalenceCommand("dtentities", nameof(CommandGetEntities));
             AddCovalenceCommand("dtmonument", nameof(CommandGetMonument));
+            AddCovalenceCommand("dtcapacity", nameof(CommandCapacity));
+            AddCovalenceCommand("dthostile", nameof(CommandNoHostile));
         }
         
         #endregion
@@ -101,6 +103,47 @@ namespace Oxide.Plugins
                 return;
             
             basePlayer.ConsoleMessage(GetMonumentName(basePlayer.transform.position));
+        }
+
+        private void CommandCapacity(IPlayer player, string command, string[] args)
+        {
+            var basePlayer = player.Object as BasePlayer;
+            if (basePlayer == null)
+                return;
+
+            var newCapacity = 0;
+            if (args.Length != 0 && !int.TryParse(args[0], out newCapacity))
+                return;
+
+            RaycastHit hit;
+            if (!Physics.Raycast(basePlayer.eyes.HeadRay(), out hit, 50f))
+                return;
+
+            var entity = hit.GetEntity();
+            if (entity == null || !(entity is StorageContainer))
+                return;
+
+            var container = entity as StorageContainer;
+            if (container == null)
+                return;
+
+            if (args.Length == 0)
+            {
+                player.Reply($"{container.inventory.capacity}");
+                return;
+            }
+            
+            container.inventory.capacity = newCapacity;
+        }
+
+        private void CommandNoHostile(IPlayer player, string command, string[] args)
+        {
+            var basePlayer = player.Object as BasePlayer;
+            if (basePlayer == null)
+                return;
+
+            basePlayer.unHostileTime = 0;
+            basePlayer.ClientRPCPlayer( null, basePlayer, "SetHostileLength", 0);
         }
         
         #endregion
