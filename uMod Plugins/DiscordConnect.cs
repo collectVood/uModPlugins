@@ -4,30 +4,28 @@ using System.Text;
 using System.Text.RegularExpressions;
 using Newtonsoft.Json;
 using Oxide.Core;
+using Oxide.Core.Libraries;
 using Oxide.Core.Libraries.Covalence;
 using Oxide.Ext.Discord;
 using Oxide.Ext.Discord.Attributes;
 using Oxide.Ext.Discord.DiscordObjects;
-using Time = Oxide.Core.Libraries.Time;
 
 namespace Oxide.Plugins
 {
-    [Info("Discord Auth", "Iv Misticos", "1.0.2")]
+    [Info("Discord Connect", "Iv Misticos", "1.0.4")]
     [Description("Discord account connection with API")]
-    public class DiscordAuth : CovalencePlugin
+    public class DiscordConnect : CovalencePlugin
     {
         #region Variables
         
         [DiscordClient]
-#pragma warning disable 649
-        private DiscordClient _client;
-#pragma warning restore 649
+        private DiscordClient _client = null;
 
         private static List<KeyInfo> _keys = new List<KeyInfo>();
 
         private static List<PlayerData> _data = new List<PlayerData>();
 
-        private static DiscordAuth _ins;
+        private static DiscordConnect _ins;
 
         private static Time _time = GetLibrary<Time>();
         
@@ -60,7 +58,7 @@ namespace Oxide.Plugins
             public bool OverwriteData = true;
             
             [JsonProperty(PropertyName = "Chat Prefix")]
-            public string Prefix = "<color=#104E8B>Auth</color>";
+            public string Prefix = "Auth";
             
             [JsonProperty(PropertyName = "Auth Command")]
             public string Command = "auth";
@@ -192,7 +190,7 @@ namespace Oxide.Plugins
         {
             lang.RegisterMessages(new Dictionary<string, string>
             {
-                {"Code Generation", "<color=#87CEFA>Here is your code</color>: {code}"},
+                {"Code Generation", "Here is your code: {code}"},
                 {"Code Expired", "Your code has expired!"},
                 {"Authenticated", "Thank you for authenticating your account!"},
                 {"Already Authenticated", "You have already authenticated your account, no need to do it again!"},
@@ -204,7 +202,7 @@ namespace Oxide.Plugins
             }, this);
         }
 
-        private void Loaded()
+        private void Init()
         {
             _ins = this;
             
@@ -222,9 +220,9 @@ namespace Oxide.Plugins
 
                 if (_config.EnableStatus)
                 {
-                    _client.UpdateStatus(new Presence()
+                    _client.UpdateStatus(new Presence
                     {
-                        Game = new Ext.Discord.DiscordObjects.Game()
+                        Game = new Ext.Discord.DiscordObjects.Game
                         {
                             Name = _config.Status,
                             Type = ActivityType.Game
