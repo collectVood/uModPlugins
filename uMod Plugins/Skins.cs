@@ -5,6 +5,8 @@ using Newtonsoft.Json;
 using Oxide.Core;
 using Oxide.Core.Libraries.Covalence;
 using Oxide.Game.Rust.Cui;
+using Steamworks;
+using Steamworks.Data;
 using UnityEngine;
 using Component = UnityEngine.Component;
 
@@ -104,6 +106,11 @@ namespace Oxide.Plugins
             permission.RegisterPermission(PermissionAdmin, this);
 
             AddCovalenceCommand(_config.Command, nameof(CommandSkin));
+
+            foreach (var player in BasePlayer.activePlayerList)
+            {
+                OnPlayerInit(player);
+            }
         }
 
         private void Unload()
@@ -111,15 +118,17 @@ namespace Oxide.Plugins
             for (var i = _controllers.Count - 1; i >= 0; i--)
             {
                 var container = _controllers[i];
-                OnPlayerDisconnected(container.owner);
+                container.DoDestroy();
+                _controllers.RemoveAt(i);
             }
 
             ValidateSkinsStop();
         }
 
-        private void OnPlayerInit(Component player)
+        private void OnPlayerInit(BasePlayer player)
         {
             var container = player.gameObject.AddComponent<ContainerController>();
+            container.owner = player;
             _controllers.Add(container); // lol
         }
 
@@ -179,25 +188,13 @@ namespace Oxide.Plugins
             var storageContainer = (StorageContainer) entity;
             
             var container = ContainerController.Find(player);
-            if (container.container != storageContainer.inventory)
+            if (container == null || container.container != storageContainer.inventory)
                 return;
             
             container.Close();
         }
 
         #endregion
-
-        // I don't think we need it because we set limitNetworking to true.
-        /*
-        private object CanNetworkTo(BaseNetworkable entity, BasePlayer target)
-        {
-            // You won't see our containers
-            if (ContainerController.FindIndex(entity as StorageContainer) != -1)
-                return false;
-            
-            return null;
-        }
-        */
         
         #endregion
 
@@ -242,7 +239,7 @@ namespace Oxide.Plugins
                     }
 
                     var container = ContainerController.Find(basePlayer);
-                    if (!container.CanShow())
+                    if (container == null || !container.CanShow())
                     {
                         player.Reply(GetMsg("Cannot Use", player.Id));
                         break;
@@ -444,39 +441,155 @@ namespace Oxide.Plugins
 
             public void DestroyUi()
             {
-                CuiHelper.DestroyUi(owner, "Skins.Left");
-                CuiHelper.DestroyUi(owner, "Skins.Right");
+                CuiHelper.DestroyUi(owner, "Skins.Background");
             }
 
             public void DrawUI(int page)
             {
-                // TODO
-                /*
                 var elements = new CuiElementContainer();
-                const int slotHeight = 115;
-                const int slotWidth = 115;
-                const int distanceBetweenSlots = 7;
-                const int distanceFromDownCorner = 34;
-                const string midAnchor = "0.5 0.0";
+                const string anchorCorner = "1.0 1.0";
 
-                var back = new CuiElement
+                var background = new CuiElement
                 {
-                    Name = "Skins.Left",
-                    Parent = "Hud",
+                    Name = "Skins.Background",
+                    Parent = "Overlay",
                     Components =
                     {
                         new CuiImageComponent
                         {
-                            
+                            Color = "0.18 0.28 0.36"
                         },
                         new CuiRectTransformComponent
                         {
-                            AnchorMin = midAnchor,
-                            AnchorMax = midAnchor,
+                            AnchorMin = anchorCorner,
+                            AnchorMax = anchorCorner,
+                            OffsetMin = "-300 -100",
+                            OffsetMax = "0 0"
                         }
                     }
                 };
-                */
+
+                var left = new CuiElement
+                {
+                    Name = "Skins.Left",
+                    Parent = background.Name,
+                    Components =
+                    {
+                        new CuiButtonComponent
+                        {
+                            Close = background.Name,
+                            Command = $"{_config.Command} _tech-update {page - 1}",
+                            Color = "0.11 0.51 0.83"
+                        },
+                        new CuiRectTransformComponent
+                        {
+                            AnchorMin = "0.025 0.05",
+                            AnchorMax = "0.325 0.95"
+                        }
+                    }
+                };
+
+                var leftText = new CuiElement
+                {
+                    Name = "Skins.Left.Text",
+                    Parent = left.Name,
+                    Components =
+                    {
+                        new CuiTextComponent
+                        {
+                            Text = "<"
+                        },
+                        new CuiRectTransformComponent
+                        {
+                            AnchorMin = "0 0",
+                            AnchorMax = "1 1"
+                        }
+                    }
+                };
+
+                var center = new CuiElement
+                {
+                    Name = "Skins.Center",
+                    Parent = background.Name,
+                    Components =
+                    {
+                        new CuiImageComponent
+                        {
+                            Color = "0.11 0.51 0.83"
+                        },
+                        new CuiRectTransformComponent
+                        {
+                            AnchorMin = "0.350 0.05",
+                            AnchorMax = "0.650 0.95"
+                        }
+                    }
+                };
+
+                var centerText = new CuiElement
+                {
+                    Name = "Skins.Center.Text",
+                    Parent = center.Name,
+                    Components =
+                    {
+                        new CuiTextComponent
+                        {
+                            Text = $"{page}"
+                        },
+                        new CuiRectTransformComponent
+                        {
+                            AnchorMin = "0 0",
+                            AnchorMax = "1 1"
+                        }
+                    }
+                };
+
+                var right = new CuiElement
+                {
+                    Name = "Right.Left",
+                    Parent = background.Name,
+                    Components =
+                    {
+                        new CuiButtonComponent
+                        {
+                            Close = background.Name,
+                            Command = $"{_config.Command} _tech-update {page - 1}",
+                            Color = "0.11 0.51 0.83"
+                        },
+                        new CuiRectTransformComponent
+                        {
+                            AnchorMin = "0.675 0.05",
+                            AnchorMax = "0.975 0.95"
+                        }
+                    }
+                };
+
+                var rightText = new CuiElement
+                {
+                    Name = "Skins.Right.Text",
+                    Parent = right.Name,
+                    Components =
+                    {
+                        new CuiTextComponent
+                        {
+                            Text = ">"
+                        },
+                        new CuiRectTransformComponent
+                        {
+                            AnchorMin = "0 0",
+                            AnchorMax = "1 1"
+                        }
+                    }
+                };
+                
+                elements.Add(background);
+                elements.Add(left);
+                elements.Add(leftText);
+                elements.Add(center);
+                elements.Add(centerText);
+                elements.Add(right);
+                elements.Add(rightText);
+
+                CuiHelper.AddUi(owner, elements);
             }
 
             public void Close()
@@ -652,19 +765,34 @@ namespace Oxide.Plugins
             
             foreach (var kvp in _config.Skins)
             {
-                var query = Rust.Global.SteamServer.Workshop.CreateQuery();
-                query.Page = 1;
-                query.PerPage = kvp.Value.Count;
-                query.FileId = kvp.Value;
-                yield return new WaitWhile(() => query.IsRunning);
+                var query = new Steamworks.Ugc.Query();
 
-                for (var i = 0; i < query.Items.Length; i++)
+                var fileIds = new PublishedFileId[kvp.Value.Count];
+                for (var i = 0; i < kvp.Value.Count; i++)
                 {
-                    var item = query.Items[i];
-                    if (!string.IsNullOrEmpty(item.Title) && HasNeededTags(item.Tags)) continue;
-                    
-                    kvp.Value.Remove(item.Id);
-                    removed++;
+                    var skin = kvp.Value[i];
+                    fileIds[i] = new PublishedFileId {Value = skin};
+                }
+
+                var pageTask = query.WithFileId(fileIds).GetPageAsync(0);
+                yield return new WaitWhile(() => pageTask.GetAwaiter().IsCompleted);
+                
+                var result = pageTask.Result;
+                if (!result.HasValue)
+                    continue;
+
+                var data = result.Value;
+
+                using (var enumerator = data.Entries.GetEnumerator())
+                {
+                    while (enumerator.MoveNext())
+                    {
+                        var item = enumerator.Current;
+                        if (!string.IsNullOrEmpty(item.Title) && HasNeededTags(item.Tags)) continue;
+
+                        kvp.Value.Remove(item.Id);
+                        removed++;
+                    }
                 }
             }
 
