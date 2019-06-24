@@ -5,10 +5,11 @@ using Newtonsoft.Json;
 using Oxide.Core;
 using Oxide.Core.Libraries.Covalence;
 using Oxide.Game.Rust.Cui;
-using Steamworks;
+using Rust;
 using Steamworks.Data;
+using Steamworks.Ugc;
 using UnityEngine;
-using Component = UnityEngine.Component;
+using VLB;
 
 namespace Oxide.Plugins
 {
@@ -44,6 +45,9 @@ namespace Oxide.Plugins
                     0
                 } }
             };
+
+            [JsonProperty(PropertyName = "Debug")]
+            public bool Debug = false;
         }
 
         protected override void LoadConfig()
@@ -202,8 +206,11 @@ namespace Oxide.Plugins
 
         private void CommandSkin(IPlayer player, string command, string[] args)
         {
-            if (!CanUse(player.Id))
+            PrintDebug("Executed Skin command");
+            
+            if (!CanUse(player))
             {
+                PrintDebug("Not allowed");
                 player.Reply(GetMsg("Not Allowed", player.Id));
                 return;
             }
@@ -211,9 +218,12 @@ namespace Oxide.Plugins
             if (args.Length == 0)
                 args = new[] {"show"}; // :P strange yeah
 
-            var isAdmin = player.IsServer || CanUseAdmin(player.Id);
+            var isAdmin = player.IsServer || CanUseAdmin(player);
             var basePlayer = player.Object as BasePlayer;
             var isPlayer = basePlayer != null;
+            
+            PrintDebug($"Arguments: {string.Join(" ", args)}");
+            PrintDebug($"Is Admin: {isAdmin} : Is Player: {isPlayer}");
             
             switch (args[0].ToLower())
             {
@@ -224,6 +234,9 @@ namespace Oxide.Plugins
                         break;
 
                     var container = ContainerController.Find(basePlayer);
+                    if (container == null)
+                        break;
+                    
                     container.UpdateContent(page);
                     
                     break;
@@ -234,6 +247,7 @@ namespace Oxide.Plugins
                 {
                     if (!isPlayer)
                     {
+                        PrintDebug("Not a player");
                         player.Reply(GetMsg("Cannot Use", player.Id));
                         break;
                     }
@@ -241,6 +255,7 @@ namespace Oxide.Plugins
                     var container = ContainerController.Find(basePlayer);
                     if (container == null || !container.CanShow())
                     {
+                        PrintDebug("Cannot show container or container not found");
                         player.Reply(GetMsg("Cannot Use", player.Id));
                         break;
                     }
@@ -257,6 +272,7 @@ namespace Oxide.Plugins
 
                     if (!isAdmin)
                     {
+                        PrintDebug("Not an admin");
                         player.Reply(GetMsg("Not Allowed", player.Id));
                         break;
                     }
@@ -265,6 +281,7 @@ namespace Oxide.Plugins
                     ulong skin;
                     if (!ulong.TryParse(args[2], out skin))
                     {
+                        PrintDebug("Invalid skin");
                         player.Reply(GetMsg("Incorrect Skin", player.Id));
                         break;
                     }
@@ -277,6 +294,7 @@ namespace Oxide.Plugins
 
                     if (skins.Contains(skin))
                     {
+                        PrintDebug("Skin already exists");
                         player.Reply(GetMsg("Skin Already Exists", player.Id));
                         break;
                     }
@@ -286,6 +304,7 @@ namespace Oxide.Plugins
                     player.Reply(GetMsg("Skin Added", player.Id));
                     
                     SaveConfig();
+                    PrintDebug("Added skin");
                     break;
                 }
 
@@ -299,6 +318,7 @@ namespace Oxide.Plugins
 
                     if (!isAdmin)
                     {
+                        PrintDebug("Not an admin");
                         player.Reply(GetMsg("Not Allowed", player.Id));
                         break;
                     }
@@ -307,6 +327,7 @@ namespace Oxide.Plugins
                     ulong skin;
                     if (!ulong.TryParse(args[2], out skin))
                     {
+                        PrintDebug("Invalid skin");
                         player.Reply(GetMsg("Incorrect Skin", player.Id));
                         break;
                     }
@@ -317,6 +338,7 @@ namespace Oxide.Plugins
                     int index;
                     if (!_config.Skins.TryGetValue(shortname, out skins) || (index = skins.IndexOf(skin)) == -1)
                     {
+                        PrintDebug("Skin doesnt exist");
                         player.Reply(GetMsg("Skin Does Not Exist", player.Id));
                         break;
                     }
@@ -326,6 +348,7 @@ namespace Oxide.Plugins
                     player.Reply(GetMsg("Skin Removed", player.Id));
                     
                     SaveConfig();
+                    PrintDebug("Removed skin");
                     break;
                 }
 
@@ -334,6 +357,7 @@ namespace Oxide.Plugins
                 {
                     if (!isPlayer)
                     {
+                        PrintDebug("Not a player");
                         player.Reply(GetMsg("Cannot Use", player.Id));
                         break;
                     }
@@ -341,6 +365,7 @@ namespace Oxide.Plugins
                     var item = basePlayer.GetActiveItem();
                     if (item == null || !item.IsValid())
                     {
+                        PrintDebug("Invalid item");
                         player.Reply(GetMsg("Skin Get No Item", player.Id));
                         break;
                     }
@@ -356,6 +381,7 @@ namespace Oxide.Plugins
                 {
                     if (!isAdmin)
                     {
+                        PrintDebug("Not an admin");
                         player.Reply(GetMsg("Not Allowed", player.Id));
                         break;
                     }
@@ -366,6 +392,7 @@ namespace Oxide.Plugins
 
                 default: // and "help", and all other args
                 {
+                    PrintDebug("Unknown command");
                     player.Reply(GetMsg(isAdmin ? "Admin Help" : "Help", player.Id));
                     break;
                 }
@@ -441,11 +468,13 @@ namespace Oxide.Plugins
 
             public void DestroyUi()
             {
+                PrintDebug("Started UI destroy");
                 CuiHelper.DestroyUi(owner, "Skins.Background");
             }
 
             public void DrawUI(int page)
             {
+                PrintDebug("Started UI draw");
                 var elements = new CuiElementContainer();
                 const string anchorCorner = "1.0 1.0";
 
@@ -589,11 +618,14 @@ namespace Oxide.Plugins
                 elements.Add(right);
                 elements.Add(rightText);
 
+                PrintDebug("Started UI send");
                 CuiHelper.AddUi(owner, elements);
+                PrintDebug("UI sent");
             }
 
             public void Close()
             {
+                PrintDebug("Closing container..");
                 isOpened = false;
                 GiveItemsBack();
                 Clear(true);
@@ -602,6 +634,7 @@ namespace Oxide.Plugins
 
             public void ChangeTo(Item item)
             {
+                PrintDebug($"Changing item to {item.info.shortname}");
                 GiveItemsBack();
 
                 for (var i = 0; i < item.contents.itemList.Count; i++)
@@ -616,21 +649,23 @@ namespace Oxide.Plugins
 
             public void Show()
             {
-                owner.EndLooting();
-                
+                PrintDebug("Started container Show");
+                isOpened = true;
                 UpdateContent(0);
-
+                
                 var loot = owner.inventory.loot;
                 
                 loot.Clear();
                 loot.PositionChecks = false;
-                loot.entitySource = null;
+                loot.entitySource = owner;
                 loot.itemSource = null;
-                loot.MarkDirty();
+                loot.SendImmediate();
+                PrintDebug("Loot sent");
                 
-                owner.inventory.loot.AddContainer(container);
-                owner.inventory.loot.SendImmediate();
+                loot.AddContainer(container);
+                loot.SendImmediate();
                 owner.ClientRPCPlayer(null, owner, "RPC_OpenLootPanel", "generic");
+                PrintDebug("Container sent");
             }
 
             public bool CanShow()
@@ -645,18 +680,24 @@ namespace Oxide.Plugins
 
             public void GiveItemsBack()
             {
+                PrintDebug("Trying to give items back..");
                 if (owner == null || !IsValid())
                     return;
 
                 var item = container?.GetSlot(0);
                 if (item == null)
+                {
+                    PrintDebug("Invalid item");
                     return;
-                
+                }
+
                 owner.GiveItem(item);
+                PrintDebug("Gave items back");
             }
 
             public void Clear(bool removeFirst)
             {
+                PrintDebug($"Clearing container : Remove first: {removeFirst}");
                 for (var i = removeFirst ? 0 : 1; i < container.itemList.Count; i++)
                 {
                     var item = container.itemList[i];
@@ -664,32 +705,45 @@ namespace Oxide.Plugins
                 }
 
                 container.itemList.Clear();
+                PrintDebug("Finished removal");
             }
 
             public void DoDestroy()
             {
+                PrintDebug("Started container destruction");
                 GiveItemsBack();
                 container.Kill();
                 Destroy(this);
+                PrintDebug("Destroyed");
             }
 
             private bool IsValid() => container?.itemList != null;
 
             public void UpdateContent(int page)
             {
+                PrintDebug($"Updating content ({page} page)");
                 Clear(false);
-                
+
                 if (page < 0 || !IsValid() || container.itemList.Count <= 0)
+                {
+                    PrintDebug("Invalid page / items / etc");
                     return;
-                
+                }
+
                 if (isOpened)
+                {
+                    PrintDebug("Opened. Drawing UI");
                     DrawUI(page);
+                }
 
                 var item = container.GetSlot(0);
                 List<ulong> skins;
                 if (!_config.Skins.TryGetValue(item.info.shortname, out skins))
+                {
+                    PrintDebug("Cannot find skins");
                     return;
-                
+                }
+
                 var perPage = container.capacity - 1;
                 var offset = perPage * page;
                 if (offset >= skins.Count)
@@ -731,6 +785,7 @@ namespace Oxide.Plugins
 
             public Item GetDuplicateItem(Item item, ulong skin)
             {
+                PrintDebug($"Getting duplicate for {item.info.shortname}..");
                 var newItem = ItemManager.Create(item.info, item.amount, skin);
                 newItem._maxCondition = item._maxCondition;
                 newItem._condition = item._condition;
@@ -745,27 +800,29 @@ namespace Oxide.Plugins
 
         private void ValidateSkinsStop()
         {
+            PrintDebug("Stopping skins validation");
             if (_skinsValidation == null)
                 return;
             
-            Rust.Global.Runner.StopCoroutine(_skinsValidation);
+            Global.Runner.StopCoroutine(_skinsValidation);
             _skinsValidation = null;
         }
 
         private void ValidateSkinsHelper(IPlayer player)
         {
             ValidateSkinsStop();
-            _skinsValidation = Rust.Global.Runner.StartCoroutine(ValidateSkins(player));
+            _skinsValidation = Global.Runner.StartCoroutine(ValidateSkins(player));
         }
 
         private IEnumerator ValidateSkins(IPlayer player)
         {
+            PrintDebug("Started skins validation");
             player?.Reply(GetMsg("Validation: Started", player.Id));
             var removed = 0;
             
             foreach (var kvp in _config.Skins)
             {
-                var query = new Steamworks.Ugc.Query();
+                var query = new Query();
 
                 var fileIds = new PublishedFileId[kvp.Value.Count];
                 for (var i = 0; i < kvp.Value.Count; i++)
@@ -798,6 +855,7 @@ namespace Oxide.Plugins
 
             player?.Reply(GetMsg("Validation: Ended", player.Id).Replace("{removed}", $"{removed}"));
             SaveConfig();
+            PrintDebug("Ended skins validation");
         }
 
         private bool HasNeededTags(IReadOnlyList<string> tags)
@@ -813,11 +871,17 @@ namespace Oxide.Plugins
             return true;
         }
 
-        private bool CanUse(string id) => permission.UserHasPermission(id, PermissionUse);
+        private bool CanUse(IPlayer player) => player.HasPermission(PermissionUse);
 
-        private bool CanUseAdmin(string id) => permission.UserHasPermission(id, PermissionAdmin);
+        private bool CanUseAdmin(IPlayer player) => player.HasPermission(PermissionAdmin);
 
         private string GetMsg(string key, string userId = null) => lang.GetMessage(key, this, userId);
+
+        private static void PrintDebug(string message)
+        {
+            if (_config.Debug)
+                Interface.Oxide.LogDebug(message);
+        }
 
         #endregion
     }
