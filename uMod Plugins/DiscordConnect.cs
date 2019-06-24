@@ -12,7 +12,7 @@ using Oxide.Ext.Discord.DiscordObjects;
 
 namespace Oxide.Plugins
 {
-    [Info("Discord Connect", "Iv Misticos", "1.0.4")]
+    [Info("Discord Connect", "Iv Misticos", "1.0.6")]
     [Description("Discord account connection with API")]
     public class DiscordConnect : CovalencePlugin
     {
@@ -50,6 +50,12 @@ namespace Oxide.Plugins
             
             [JsonProperty(PropertyName = "Bot Status")]
             public string Status = "Send me your code";
+            
+            [JsonProperty(PropertyName = "Group To Assign Once Connected")]
+            public string GroupConnected = "discord-connected";
+            
+            [JsonProperty(PropertyName = "Group To Revoke Once Left")]
+            public string GroupLeft = "discord-connected";
             
             [JsonProperty(PropertyName = "Delete Data On Discord Leave")]
             public bool DeleteData = false;
@@ -258,13 +264,21 @@ namespace Oxide.Plugins
         // Called when a member leaves the Discord server
         private void Discord_MemberRemoved(GuildMember member)
         {
-            // Disabled in config
-            if (!_config.DeleteData)
-                return;
-
             // No user found
             var found = PlayerData.FindByDiscord(member.user.id);
             if (found == null)
+                return;
+
+            if (!string.IsNullOrEmpty(_config.GroupLeft))
+            {
+                var player = players.FindPlayerById(found.GameId);
+                player.RemoveFromGroup(_config.GroupLeft);
+            }
+
+            Interface.Oxide.CallHook("OnDiscordAuthLeave", found.GameId, found.DiscordId);
+
+            // Disabled in config
+            if (!_config.DeleteData)
                 return;
 
             _data.Remove(found);
@@ -341,6 +355,11 @@ namespace Oxide.Plugins
                         .Replace("{discordId}", message.author.id).Replace("{gameId}", info.Player.Id)
                         .Replace("{gameName}", info.Player.Name).ToString());
 
+                if (!string.IsNullOrEmpty(_config.GroupConnected))
+                {
+                    info.Player.AddToGroup(_config.GroupConnected);
+                }
+                
                 Interface.Oxide.CallHook("OnDiscordAuthenticate", info.Key, message.author.id);
             });
         }

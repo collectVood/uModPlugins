@@ -9,7 +9,6 @@ using Rust;
 using Steamworks.Data;
 using Steamworks.Ugc;
 using UnityEngine;
-using VLB;
 
 namespace Oxide.Plugins
 {
