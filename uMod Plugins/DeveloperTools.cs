@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Oxide.Core;
 using Oxide.Core.Libraries.Covalence;
 using UnityEngine;
 
@@ -18,6 +19,10 @@ namespace Oxide.Plugins
             AddCovalenceCommand("dtmonument", nameof(CommandGetMonument));
             AddCovalenceCommand("dtcapacity", nameof(CommandCapacity));
             AddCovalenceCommand("dthostile", nameof(CommandNoHostile));
+            AddCovalenceCommand("dtext.load", nameof(CommandExtensionLoad));
+            AddCovalenceCommand("dtext.reload", nameof(CommandExtensionReload));
+            AddCovalenceCommand("dtext.unload", nameof(CommandExtensionUnload));
+            AddCovalenceCommand("dtext.list", nameof(CommandExtensionList));
         }
         
         #endregion
@@ -144,6 +149,44 @@ namespace Oxide.Plugins
 
             basePlayer.unHostileTime = 0;
             basePlayer.ClientRPCPlayer( null, basePlayer, "SetHostileLength", 0);
+        }
+
+        private void CommandExtensionLoad(IPlayer player, string command, string[] args)
+        {
+            if (args.Length == 0)
+                return;
+
+            Interface.Oxide.LoadExtension(args[0]);
+        }
+
+        private void CommandExtensionReload(IPlayer player, string command, string[] args)
+        {
+            if (args.Length == 0)
+                return;
+
+            Interface.Oxide.ReloadExtension(args[0]);
+        }
+
+        private void CommandExtensionUnload(IPlayer player, string command, string[] args)
+        {
+            if (args.Length == 0)
+                return;
+
+            Interface.Oxide.UnloadExtension(args[0]);
+        }
+
+        private void CommandExtensionList(IPlayer player, string command, string[] args)
+        {
+            var extensions = Interface.Oxide.GetAllExtensions();
+            var table = new TextTable();
+            table.AddColumns("Name", "Author", "Filename", "Version");
+            
+            foreach (var ext in extensions)
+            {
+                table.AddRow(ext.Name, ext.Author, ext.Filename.Substring(ext.Filename.LastIndexOf('\\') + 1), ext.Version.ToString());
+            }
+            
+            player.Reply(table.ToString());
         }
         
         #endregion
