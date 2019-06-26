@@ -1,14 +1,9 @@
 ﻿using System;
-using System.Collections;
 using System.Collections.Generic;
 using Newtonsoft.Json;
 using Oxide.Core;
 using Oxide.Core.Libraries.Covalence;
 using Oxide.Game.Rust.Cui;
-using Rust;
-using Steamworks.Data;
-using Steamworks.Ugc;
-using UnityEngine;
 using Object = UnityEngine.Object;
 
 namespace Oxide.Plugins
@@ -23,8 +18,6 @@ namespace Oxide.Plugins
 
         private const string PermissionUse = "skins.use";
         private const string PermissionAdmin = "skins.admin";
-
-        private Coroutine _skinsValidation;
         
         #endregion
 
@@ -122,83 +115,57 @@ namespace Oxide.Plugins
             for (var i = _controllers.Count - 1; i >= 0; i--)
             {
                 var container = _controllers[i];
-                container.DoDestroy();
+                container.Destroy();
+                
                 _controllers.RemoveAt(i);
             }
-
-            ValidateSkinsStop();
-        }
-
-        private object CanLootPlayer(BasePlayer looted, BasePlayer looter)
-        {
-            PrintDebug("CanLootPlayer");
-            
-            if (looted != looter)
-            {
-                PrintDebug("looted != looter");
-                return null;
-            }
-
-            var container = ContainerController.Find(looter);
-            if (container == null)
-            {
-                PrintDebug("Container null");
-                return null;
-            }
-
-            if (container.isOpened)
-            {
-                PrintDebug("Everything okay. TRUE");
-                return true;
-            }
-
-            PrintDebug("Container is not opened");
-            return null;
         }
 
         private void OnPlayerInit(BasePlayer player)
         {
-            var container = player.gameObject.AddComponent<ContainerController>();
-            container.owner = player;
-            _controllers.Add(container); // lol
+            _controllers.Add(new ContainerController(player)); // lol
         }
 
         private void OnPlayerDisconnected(BasePlayer player)
         {
             var index = ContainerController.FindIndex(player);
             var container = _controllers[index];
-            container.DoDestroy();
+            container.Destroy();
+            
             _controllers.RemoveAt(index);
         }
 
         #region Working With Containers
 
-        private object CanAcceptItem(ItemContainer itemContainer, Item item)
+        private void OnItemAddedToContainer(ItemContainer itemContainer, Item item)
         {
+            var player = itemContainer.GetOwnerPlayer();
             var container = ContainerController.Find(itemContainer);
-            if (container == null)
-                return null;
-
-            container.isOpened = true;
-            container.ChangeTo(item);
-
-            return true;
+            if (container == null || player != null)
+                return;
+            
+            PrintDebug("OnItemAddedToContainer");
+            item.position = 0;
+            container.UpdateContent(0);
         }
 
         private void OnItemRemovedFromContainer(ItemContainer itemContainer, Item item)
         {
-            var player = itemContainer?.GetOwnerPlayer();
-            var container = ContainerController.Find(player);
-            if (container == null || container.container != itemContainer)
+            var player = itemContainer.GetOwnerPlayer();
+            var container = ContainerController.Find(itemContainer);
+            if (container == null || player == null)
                 return;
-
-            container.Clear(true); // I guess it's all okay but needs testing
+            
+            PrintDebug("OnItemRemovedFromContainer");
+            container.Clear();
         }
 
-        private void OnLootEntityEnd(BasePlayer player, Object entity)
+        private void OnPlayerLootEnd(PlayerLoot loot)
         {
             PrintDebug("OnLootEntityEnd");
-            if (player != entity)
+
+            var player = loot.gameObject.GetComponent<BasePlayer>();
+            if (player != loot.entitySource)
                 return;
             
             var container = ContainerController.Find(player);
@@ -207,6 +174,19 @@ namespace Oxide.Plugins
             
             PrintDebug("Ended looting container");
             container.Close();
+        }
+
+        private object CanLootPlayer(BasePlayer looter, Object target)
+        {
+            if (looter != target)
+                return null;
+
+            var container = ContainerController.Find(looter);
+            if (container == null || !container.IsOpened)
+                return null;
+
+            PrintDebug("Allowing to loot player (skin container)");
+            return true;
         }
 
         #endregion
@@ -245,11 +225,10 @@ namespace Oxide.Plugins
                         break;
 
                     var container = ContainerController.Find(basePlayer);
-                    if (container == null)
-                        break;
-                    
-                    container.UpdateContent(page);
-                    
+
+                    container?.UpdateContent(page);
+                    container?.DestroyUI();
+                    container?.DrawUI(page);
                     break;
                 }
                     
@@ -271,7 +250,7 @@ namespace Oxide.Plugins
                         break;
                     }
 
-                    container.Show();
+                    timer.Once(1f, () => container.Show());
                     break;
                 }
 
@@ -387,20 +366,6 @@ namespace Oxide.Plugins
                     break;
                 }
 
-                case "validate":
-                case "v":
-                {
-                    if (!isAdmin)
-                    {
-                        PrintDebug("Not an admin");
-                        player.Reply(GetMsg("Not Allowed", player.Id));
-                        break;
-                    }
-                    
-                    ValidateSkinsHelper(player);
-                    break;
-                }
-
                 default: // and "help", and all other args
                 {
                     PrintDebug("Unknown command");
@@ -414,7 +379,7 @@ namespace Oxide.Plugins
         
         #region Controller
 
-        private class ContainerController : MonoBehaviour
+        private class ContainerController
         {
             /*
              * Basic tips:
@@ -423,20 +388,11 @@ namespace Oxide.Plugins
 
             private const int Capacity = 30;
             
-            public BasePlayer owner;
-            public ItemContainer container = new ItemContainer();
-            public bool isOpened = false;
+            public BasePlayer Owner;
+            public ItemContainer Container;
+            public bool IsOpened = false;
 
             #region Search
-
-            private void Awake()
-            {
-                container.capacity = Capacity;
-                container.entityOwner = owner;
-                container.isServer = true;
-                container.allowedContents = ItemContainer.ContentsType.Generic;
-                container.GiveUID();
-            }
 
             // ReSharper disable once SuggestBaseTypeForParameter
             public static int FindIndex(BasePlayer player)
@@ -446,7 +402,7 @@ namespace Oxide.Plugins
                 
                 for (var i = 0; i < _controllers.Count; i++)
                 {
-                    if (_controllers[i].owner == player)
+                    if (_controllers[i].Owner == player)
                     {
                         return i;
                     }
@@ -470,7 +426,7 @@ namespace Oxide.Plugins
                 
                 for (var i = 0; i < _controllers.Count; i++)
                 {
-                    if (_controllers[i].container == container)
+                    if (_controllers[i].Container == container)
                     {
                         return i;
                     }
@@ -488,10 +444,25 @@ namespace Oxide.Plugins
             
             #endregion
 
-            public void DestroyUi()
+            public ContainerController(BasePlayer player)
+            {
+                Owner = player;
+                
+                Container = new ItemContainer
+                {
+                    entityOwner = Owner,
+                    capacity = Capacity,
+                    isServer = true,
+                    allowedContents = ItemContainer.ContentsType.Generic
+                };
+                
+                Container.GiveUID();
+            }
+
+            public void DestroyUI()
             {
                 PrintDebug("Started UI destroy");
-                CuiHelper.DestroyUi(owner, "Skins.Background");
+                CuiHelper.DestroyUi(Owner, "Skins.Background");
             }
 
             public void DrawUI(int page)
@@ -641,107 +612,100 @@ namespace Oxide.Plugins
                 elements.Add(rightText);
 
                 PrintDebug("Started UI send");
-                CuiHelper.AddUi(owner, elements);
+                CuiHelper.AddUi(Owner, elements);
                 PrintDebug("UI sent");
             }
 
             public void Close()
             {
-                PrintDebug("Closing container..");
-                isOpened = false;
-                GiveItemsBack();
-                Clear(true);
-                DestroyUi();
-            }
-
-            public void ChangeTo(Item item)
-            {
-                PrintDebug($"Changing item to {item.info.shortname}");
-                GiveItemsBack();
-
-                for (var i = 0; i < item.contents.itemList.Count; i++)
-                {
-                    var content = item.contents.itemList[i];
-                    content.MoveToContainer(item.parent);
-                }
-
-                container.Insert(item);
-                UpdateContent(0);
+                PrintDebug("Closing container");
+                
+                GiveItemBack();
+                Clear();
+                DestroyUI();
+                
+                IsOpened = false;
             }
 
             public void Show()
             {
                 PrintDebug("Started container Show");
-                isOpened = true;
+                
+                IsOpened = true;
                 UpdateContent(0);
                 
-                var loot = owner.inventory.loot;
+                var loot = Owner.inventory.loot;
                 
                 loot.Clear();
                 loot.PositionChecks = false;
-                loot.entitySource = owner;
+                loot.entitySource = Owner;
                 loot.itemSource = null;
-                loot.MarkDirty();
-                loot.AddContainer(container);
+                loot.AddContainer(Container);
                 loot.SendImmediate();
                 
-                owner.ClientRPCPlayer(null, owner, "RPC_OpenLootPanel", "generic");
-                PrintDebug("Container sent");
+                Owner.ClientRPCPlayer(null, Owner, "RPC_OpenLootPanel", "genericlarge");
             }
+            
+            #region Can Show
 
             public bool CanShow()
             {
-                return CanShow(owner);
+                return CanShow(Owner);
             }
 
             private static bool CanShow(BaseCombatEntity player)
             {
                 return player != null && !player.IsDead();
             }
+            
+            #endregion
 
-            public void GiveItemsBack()
+            public void GiveItemBack()
             {
-                PrintDebug("Trying to give items back..");
-                if (owner == null || !IsValid())
+                if (!IsValid())
                     return;
+                
+                PrintDebug("Trying to give item back..");
 
-                var item = container?.GetSlot(0);
+                var item = Container.GetSlot(0);
                 if (item == null)
                 {
                     PrintDebug("Invalid item");
                     return;
                 }
 
-                owner.GiveItem(item);
-                PrintDebug("Gave items back");
+                Owner.GiveItem(item);
+                PrintDebug("Gave item back");
             }
 
-            public void Clear(bool removeFirst)
+            public void Clear()
             {
-                PrintDebug($"Clearing container : Remove first: {removeFirst}");
-                for (var i = removeFirst ? 0 : 1; i < container.itemList.Count; i++)
+                PrintDebug($"Clearing container");
+                
+                for (var i = 0; i < Container.itemList.Count; i++)
                 {
-                    var item = container.itemList[i];
+                    var item = Container.itemList[i];
                     item.DoRemove();
                 }
-
-                container.itemList.Clear();
-                PrintDebug("Finished removal");
+                
+                Container.itemList.Clear();
+                Container.MarkDirty();
             }
 
-            public void DoDestroy()
+            public void Destroy()
             {
-                PrintDebug("Started container destruction");
-                GiveItemsBack();
-                container.Kill();
-                Destroy(this);
-                PrintDebug("Destroyed");
+                Close();
+                Container.Kill();
+                
+                PrintDebug("Destroyed container");
             }
-
-            private bool IsValid() => container?.itemList != null;
 
             public void UpdateContent(int page)
             {
+                var source = Container.GetSlot(0);
+                source?.MarkDirty();
+
+                /*
                 PrintDebug($"Updating content ({page} page)");
                 Clear(false);
 
@@ -802,95 +766,27 @@ namespace Oxide.Plugins
                     foreach (var itemMod in newItem.info.itemMods)
                         itemMod.OnParentChanged(newItem);
                 }
+                */
             }
 
             public Item GetDuplicateItem(Item item, ulong skin)
             {
                 PrintDebug($"Getting duplicate for {item.info.shortname}..");
+
                 var newItem = ItemManager.Create(item.info, item.amount, skin);
                 newItem._maxCondition = item._maxCondition;
                 newItem._condition = item._condition;
                 newItem.contents.capacity = item.contents.capacity;
+                
                 return newItem;
             }
+
+            private bool IsValid() => Owner == null || Container?.itemList != null;
         }
         
         #endregion
         
         #region Helpers
-
-        private void ValidateSkinsStop()
-        {
-            PrintDebug("Stopping skins validation");
-            if (_skinsValidation == null)
-                return;
-            
-            Global.Runner.StopCoroutine(_skinsValidation);
-            _skinsValidation = null;
-        }
-
-        private void ValidateSkinsHelper(IPlayer player)
-        {
-            ValidateSkinsStop();
-            _skinsValidation = Global.Runner.StartCoroutine(ValidateSkins(player));
-        }
-
-        private IEnumerator ValidateSkins(IPlayer player)
-        {
-            PrintDebug("Started skins validation");
-            player?.Reply(GetMsg("Validation: Started", player.Id));
-            var removed = 0;
-            
-            foreach (var kvp in _config.Skins)
-            {
-                var query = new Query();
-
-                var fileIds = new PublishedFileId[kvp.Value.Count];
-                for (var i = 0; i < kvp.Value.Count; i++)
-                {
-                    var skin = kvp.Value[i];
-                    fileIds[i] = new PublishedFileId {Value = skin};
-                }
-
-                var pageTask = query.WithFileId(fileIds).GetPageAsync(0);
-                yield return new WaitWhile(() => pageTask.GetAwaiter().IsCompleted);
-                
-                var result = pageTask.Result;
-                if (!result.HasValue)
-                    continue;
-
-                var data = result.Value;
-
-                using (var enumerator = data.Entries.GetEnumerator())
-                {
-                    while (enumerator.MoveNext())
-                    {
-                        var item = enumerator.Current;
-                        if (!string.IsNullOrEmpty(item.Title) && HasNeededTags(item.Tags)) continue;
-
-                        kvp.Value.Remove(item.Id);
-                        removed++;
-                    }
-                }
-            }
-
-            player?.Reply(GetMsg("Validation: Ended", player.Id).Replace("{removed}", $"{removed}"));
-            SaveConfig();
-            PrintDebug("Ended skins validation");
-        }
-
-        private bool HasNeededTags(IReadOnlyList<string> tags)
-        {
-            for (var i = 0; i < tags.Count; i++)
-            {
-                var tag = tags[i];
-                
-                if (string.Equals(tag, "version2", StringComparison.CurrentCultureIgnoreCase))
-                    return false;
-            }
-
-            return true;
-        }
 
         private bool CanUse(IPlayer player) => player.HasPermission(PermissionUse);
 
