@@ -9,6 +9,7 @@ using Rust;
 using Steamworks.Data;
 using Steamworks.Ugc;
 using UnityEngine;
+using Object = UnityEngine.Object;
 
 namespace Oxide.Plugins
 {
@@ -128,6 +129,33 @@ namespace Oxide.Plugins
             ValidateSkinsStop();
         }
 
+        private object CanLootPlayer(BasePlayer looted, BasePlayer looter)
+        {
+            PrintDebug("CanLootPlayer");
+            
+            if (looted != looter)
+            {
+                PrintDebug("looted != looter");
+                return null;
+            }
+
+            var container = ContainerController.Find(looter);
+            if (container == null)
+            {
+                PrintDebug("Container null");
+                return null;
+            }
+
+            if (container.isOpened)
+            {
+                PrintDebug("Everything okay. TRUE");
+                return true;
+            }
+
+            PrintDebug("Container is not opened");
+            return null;
+        }
+
         private void OnPlayerInit(BasePlayer player)
         {
             var container = player.gameObject.AddComponent<ContainerController>();
@@ -141,22 +169,6 @@ namespace Oxide.Plugins
             var container = _controllers[index];
             container.DoDestroy();
             _controllers.RemoveAt(index);
-        }
-
-        private void OnEntityTakeDamage(BaseNetworkable entity, HitInfo info)
-        {
-            if (!(entity is StorageContainer) ||
-                ContainerController.FindIndex(((StorageContainer) entity).inventory) == -1)
-                return;
-
-            // Remove damage from our containers
-            info.damageTypes.ScaleAll(0);
-        }
-
-        private void OnEntityDeath(BaseNetworkable entity, HitInfo info)
-        {
-            // Same as in OnEntityTakeDamage
-            OnEntityTakeDamage(entity, info);
         }
 
         #region Working With Containers
@@ -183,17 +195,17 @@ namespace Oxide.Plugins
             container.Clear(true); // I guess it's all okay but needs testing
         }
 
-        private void OnLootEntityEnd(BasePlayer player, BaseCombatEntity entity)
+        private void OnLootEntityEnd(BasePlayer player, Object entity)
         {
-            if (!(entity is StorageContainer))
+            PrintDebug("OnLootEntityEnd");
+            if (player != entity)
                 return;
-
-            var storageContainer = (StorageContainer) entity;
             
             var container = ContainerController.Find(player);
-            if (container == null || container.container != storageContainer.inventory)
+            if (container == null)
                 return;
             
+            PrintDebug("Ended looting container");
             container.Close();
         }
 
@@ -408,12 +420,23 @@ namespace Oxide.Plugins
              * Basic tips:
              * Item with slot 0: Player's skin item
              */
+
+            private const int Capacity = 30;
             
             public BasePlayer owner;
             public ItemContainer container = new ItemContainer();
             public bool isOpened = false;
 
             #region Search
+
+            private void Awake()
+            {
+                container.capacity = Capacity;
+                container.entityOwner = owner;
+                container.isServer = true;
+                container.allowedContents = ItemContainer.ContentsType.Generic;
+                container.GiveUID();
+            }
 
             // ReSharper disable once SuggestBaseTypeForParameter
             public static int FindIndex(BasePlayer player)
@@ -658,11 +681,10 @@ namespace Oxide.Plugins
                 loot.PositionChecks = false;
                 loot.entitySource = owner;
                 loot.itemSource = null;
-                loot.SendImmediate();
-                PrintDebug("Loot sent");
-                
+                loot.MarkDirty();
                 loot.AddContainer(container);
                 loot.SendImmediate();
+                
                 owner.ClientRPCPlayer(null, owner, "RPC_OpenLootPanel", "generic");
                 PrintDebug("Container sent");
             }
