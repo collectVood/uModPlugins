@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Oxide.Core;
 using Oxide.Core.Libraries.Covalence;
@@ -9,20 +10,29 @@ namespace Oxide.Plugins
     [Description("Provides some development tools for developers like finding triggers")]
     class DeveloperTools : RustPlugin
     {
+        #region Variables
+        
+        List<Item> createdItems = new List<Item>();
+        
+        #endregion
+        
         #region Hooks
         
         private void Init()
         {
-            AddCovalenceCommand("dtcolliders", nameof(CommandGetColliders));
-            AddCovalenceCommand("dtcomponents", nameof(CommandGetComponents));
-            AddCovalenceCommand("dtentities", nameof(CommandGetEntities));
-            AddCovalenceCommand("dtmonument", nameof(CommandGetMonument));
-            AddCovalenceCommand("dtcapacity", nameof(CommandCapacity));
-            AddCovalenceCommand("dthostile", nameof(CommandNoHostile));
+            AddCovalenceCommand("dt.colliders", nameof(CommandGetColliders));
+            AddCovalenceCommand("dt.components", nameof(CommandGetComponents));
+            AddCovalenceCommand("dt.entities", nameof(CommandGetEntities));
+            AddCovalenceCommand("dt.monument", nameof(CommandGetMonument));
+            AddCovalenceCommand("dt.capacity", nameof(CommandCapacity));
+            AddCovalenceCommand("dt.hostile", nameof(CommandNoHostile));
             AddCovalenceCommand("dtext.load", nameof(CommandExtensionLoad));
             AddCovalenceCommand("dtext.reload", nameof(CommandExtensionReload));
             AddCovalenceCommand("dtext.unload", nameof(CommandExtensionUnload));
             AddCovalenceCommand("dtext.list", nameof(CommandExtensionList));
+            AddCovalenceCommand("dt.cei", nameof(CommandCreateEmptyItems));
+            AddCovalenceCommand("dt.cleari", nameof(CommandClearItems));
+            AddCovalenceCommand("dt.rungc", nameof(CommandRunGC));
         }
         
         #endregion
@@ -187,6 +197,40 @@ namespace Oxide.Plugins
             }
             
             player.Reply(table.ToString());
+        }
+
+        private void CommandCreateEmptyItems(IPlayer player, string command, string[] args)
+        {
+            if (args.Length < 2)
+                return;
+
+            var itemDef = ItemManager.FindItemDefinition(args[0]);
+            if (itemDef == null)
+                return;
+
+            int amount;
+            if (!int.TryParse(args[1], out amount) || amount <= 0)
+                return;
+            
+            player.Reply("Started creating");
+            for (var i = 0; i < amount; i++)
+            {
+                createdItems.Add(ItemManager.Create(itemDef));
+            }
+
+            player.Reply($"Created {amount} items with shortname {args[0]}");
+            player.Reply($"Total created items: {createdItems.Count}");
+        }
+
+        private void CommandClearItems(IPlayer player, string command, string[] args)
+        {
+            createdItems.Clear();
+            createdItems = new List<Item>();
+        }
+
+        private void CommandRunGC(IPlayer player, string command, string[] args)
+        {
+            GC.Collect(GC.MaxGeneration);
         }
         
         #endregion
