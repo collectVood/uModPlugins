@@ -6,7 +6,7 @@ using Oxide.Core;
 
 namespace Oxide.Plugins
 {
-    [Info("Discord Connect Commands", "Iv Misticos", "1.0.1")]
+    [Info("Discord Connect Commands", "Iv Misticos", "1.0.2")]
     [Description("Execute commands on Discord Connect events")]
     class DiscordConnectCommands : CovalencePlugin
     {
@@ -20,21 +20,21 @@ namespace Oxide.Plugins
                 ObjectCreationHandling = ObjectCreationHandling.Replace)]
             public List<string> CommandsConnect = new List<string>
             {
-                "echo {gameId} {discordId}"
+                "exampleCommand {gameId} {discordId}"
             };
 
             [JsonProperty(PropertyName = "Commands On Overwrite",
                 ObjectCreationHandling = ObjectCreationHandling.Replace)]
             public List<string> CommandsOverwrite = new List<string>
             {
-                "echo {oldGameId} {newGameId} {oldDiscordId} {newDiscordId}"
+                "exampleCommand {oldGameId} {newGameId} {oldDiscordId} {newDiscordId}"
             };
 
             [JsonProperty(PropertyName = "Commands On Server Leave",
                 ObjectCreationHandling = ObjectCreationHandling.Replace)]
             public List<string> CommandsLeave = new List<string>
             {
-                "echo {gameId} {discordId}"
+                "exampleCommand {gameId} {discordId}"
             };
         }
 
@@ -48,7 +48,7 @@ namespace Oxide.Plugins
             }
             catch
             {
-                Config.WriteObject(_config, false, $"{Interface.GetMod().ConfigDirectory}/{Name}.jsonError");
+                Config.WriteObject(_config, false, $"{Interface.Oxide.ConfigDirectory}/{Name}.jsonError");
                 PrintError("The configuration file contains an error and has been replaced with a default config.\n" +
                            "The error configuration file was saved in the .jsonError extension");
                 LoadDefaultConfig();
@@ -62,42 +62,47 @@ namespace Oxide.Plugins
         protected override void LoadDefaultConfig() => _config = new Configuration();
 
         #endregion
-        
+
+        #region Methods
+
+        StringBuilder builder = new StringBuilder();
+
+        private string FormatCommand(string command, string gameId, string discordId)
+        {
+            builder.Length = 0;
+            return builder.Append(command).Replace("{gameId}", gameId).Replace("{discordId}", discordId).ToString();
+        }
+        private string FormatCommand(string command, string oldGameId, string newGameId, string oldDiscordId,
+            string newDiscordId)
+        {
+            builder.Length = 0;
+            return builder.Append(command).Replace("{oldGameId}", oldGameId)
+                    .Replace("{newGameId}", newGameId).Replace("{oldDiscordId}", oldDiscordId)
+                    .Replace("{newDiscordId}", newDiscordId).ToString();
+        }
+        private void ExecuteCommand(string command) => server.Command(command);
+
+        #endregion
+
         #region Hooks
 
         private void OnDiscordAuthenticate(string gameId, string discordId)
         {
-            var builder = new StringBuilder();
             foreach (var command in _config.CommandsConnect)
-            {
-                builder.Length = 0;
-                covalence.Server.Command(builder.Append(command).Replace("{gameId}", gameId)
-                    .Replace("{discordId}", discordId).ToString());
-            }
+                ExecuteCommand(FormatCommand(command, gameId, discordId));
         }
 
         private void OnDiscordAuthOverwrite(string oldGameId, string newGameId, string oldDiscordId,
             string newDiscordId)
         {
-            var builder = new StringBuilder();
             foreach (var command in _config.CommandsOverwrite)
-            {
-                builder.Length = 0;
-                covalence.Server.Command(builder.Append(command).Replace("{oldGameId}", oldGameId)
-                    .Replace("{newGameId}", newGameId).Replace("{oldDiscordId}", oldDiscordId)
-                    .Replace("{newDiscordId}", newDiscordId).ToString());
-            }
+                ExecuteCommand(FormatCommand(command, oldGameId, newGameId, oldDiscordId, newDiscordId));
         }
 
         private void OnDiscordAuthLeave(string gameId, string discordId)
         {
-            var builder = new StringBuilder();
-            foreach (var command in _config.CommandsLeave)
-            {
-                builder.Length = 0;
-                covalence.Server.Command(builder.Append(command).Replace("{gameId}", gameId)
-                    .Replace("{discordId}", discordId).ToString());
-            }
+            foreach (var command in _config.CommandsConnect)
+                ExecuteCommand(FormatCommand(command, gameId, discordId));
         }
         
         #endregion
